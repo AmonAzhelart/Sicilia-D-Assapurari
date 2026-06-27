@@ -4277,10 +4277,7 @@
             <label>Colore Dettagli</label>
             <input type="color" id="set-color" value="#8a2324" style="height:40px; padding:2px;">
         </div>
-        <div class="setting-field">
-            <label>GitLab Token (per sincronizzazione)</label>
-            <input type="text" id="set-gitlab-token" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx">
-        </div>
+
         <button onclick="saveSettings()"
             style="width:100%; background:var(--primary); color:white; padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:700;">SALVA</button>
     </div>
@@ -4933,8 +4930,6 @@
             };
 
             try {
-                document.getElementById('set-gitlab-token').value = GITLAB_TOKEN;
-
                 if (progressEl) progressEl.style.width = '30%';
                 var configResp = await fetch(getFileUrl('config.json'));
                 if (!configResp.ok) throw new Error('HTTP ' + configResp.status);
@@ -6903,7 +6898,6 @@
         function saveSettings() {
             setBrandName(document.getElementById('brand-name'), document.getElementById('set-name').value);
             document.documentElement.style.setProperty('--accent', document.getElementById('set-color').value);
-            GITLAB_TOKEN = document.getElementById('set-gitlab-token').value;
             toggleSettings();
         }
 
