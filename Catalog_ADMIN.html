@@ -6224,14 +6224,14 @@
             var product = APP.products[APP.activeProductIndex];
             var rows = document.querySelectorAll('.tech-row');
             product.tech = Array.from(rows).map(function (r) {
-                return { k: r.children[0].innerText, v: r.children[1].innerText };
+                return { k: r.querySelector('.tech-key').innerText, v: r.querySelector('.tech-val').innerText };
             });
         }
 
         function renderTech(arr) {
             var grid = document.getElementById('tech-grid');
             grid.innerHTML = arr.map(function (i, idx) {
-                return '<div class="tech-row" draggable="true">' +
+                return '<div class="tech-row">' +
                     '<div class="tech-drag-handle" title="Trascina per riordinare"><i class="fa-solid fa-grip-vertical"></i></div>' +
                     '<div class="tech-key" contenteditable="true">' + i.k + '</div>' +
                     '<div class="tech-val" contenteditable="true">' + i.v + '</div>' +
@@ -6248,17 +6248,30 @@
             if (grid.dataset.dragInit) return;
             grid.dataset.dragInit = '1';
             var dragSrc = null;
+
+            // Attiva draggable solo dal grip handle, per non interferire con contenteditable
+            grid.addEventListener('mousedown', function (e) {
+                var handle = e.target.closest('.tech-drag-handle');
+                var rows = grid.querySelectorAll('.tech-row');
+                rows.forEach(function (r) { r.removeAttribute('draggable'); });
+                if (handle) handle.closest('.tech-row').setAttribute('draggable', 'true');
+            });
+
             grid.addEventListener('dragstart', function (e) {
-                var row = e.target.closest('.tech-row');
-                if (!row) return;
+                var row = e.target.closest('[draggable="true"]');
+                if (!row) { e.preventDefault(); return; }
                 dragSrc = row;
                 e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', '');
                 setTimeout(function () { row.style.opacity = '0.4'; }, 0);
             });
             grid.addEventListener('dragend', function () {
-                if (dragSrc) dragSrc.style.opacity = '';
+                grid.querySelectorAll('.tech-row').forEach(function (r) {
+                    r.style.opacity = '';
+                    r.removeAttribute('draggable');
+                    r.classList.remove('drag-over');
+                });
                 dragSrc = null;
-                grid.querySelectorAll('.drag-over').forEach(function (r) { r.classList.remove('drag-over'); });
             });
             grid.addEventListener('dragover', function (e) {
                 e.preventDefault();
@@ -6273,9 +6286,9 @@
                 if (!row || row === dragSrc || !dragSrc) return;
                 syncTechFromUI();
                 var product = APP.products[APP.activeProductIndex];
-                var rows = Array.from(grid.querySelectorAll('.tech-row'));
-                var fromIdx = rows.indexOf(dragSrc);
-                var toIdx = rows.indexOf(row);
+                var allRows = Array.from(grid.querySelectorAll('.tech-row'));
+                var fromIdx = allRows.indexOf(dragSrc);
+                var toIdx = allRows.indexOf(row);
                 var item = product.tech.splice(fromIdx, 1)[0];
                 product.tech.splice(toIdx, 0, item);
                 delete grid.dataset.dragInit;
