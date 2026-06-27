@@ -518,7 +518,7 @@
         }
 
         @media (min-width: 768px) {
-            .header-actions>.icon-btn {
+            .header-actions>.icon-btn:not(.settings-btn) {
                 display: none;
             }
 
@@ -4154,7 +4154,7 @@
                         class="fa-solid fa-magnifying-glass"></i></button>
                 <button class="icon-btn admin-only" onclick="toggleAdminMenu()" title="Apri menu admin"><i
                     class="fa-solid fa-shield-halved"></i></button>
-                <button class="icon-btn admin-only" onclick="toggleSettings()"><i
+                <button class="icon-btn settings-btn admin-only" onclick="toggleSettings()"><i
                         class="fa-solid fa-sliders"></i></button>
             </div>
         </div>

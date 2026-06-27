@@ -1,1 +1,3 @@
 .token-gitlab
+.env
+.env.local
