@@ -40,7 +40,9 @@ module.exports = function handler(req, res) {
     return res.status(302).end();
   }
   const file = path.join(process.cwd(), 'Catalog_ADMIN.html');
-  const html = fs.readFileSync(file, 'utf8');
+  const token = (process.env.GITLAB_TOKEN || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const html = fs.readFileSync(file, 'utf8')
+    .replace('var GITLAB_TOKEN = "";', `var GITLAB_TOKEN = "${token}";`);
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.status(200).end(html);

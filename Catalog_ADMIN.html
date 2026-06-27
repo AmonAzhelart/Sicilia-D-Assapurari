@@ -4933,8 +4933,7 @@
             };
 
             try {
-                GITLAB_TOKEN = localStorage.getItem('gitlab_token') || '';
-                if (GITLAB_TOKEN) document.getElementById('set-gitlab-token').value = GITLAB_TOKEN;
+                document.getElementById('set-gitlab-token').value = GITLAB_TOKEN;
 
                 if (progressEl) progressEl.style.width = '30%';
                 var configResp = await fetch(getFileUrl('config.json'));
@@ -6892,7 +6891,6 @@
             setBrandName(document.getElementById('brand-name'), document.getElementById('set-name').value);
             document.documentElement.style.setProperty('--accent', document.getElementById('set-color').value);
             GITLAB_TOKEN = document.getElementById('set-gitlab-token').value;
-            localStorage.setItem('gitlab_token', GITLAB_TOKEN);
             toggleSettings();
         }
 
