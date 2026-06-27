@@ -1,5 +1,6 @@
 {
-  "rewrites": [
-    { "source": "/Catalog_ADMIN.html", "destination": "/api/admin" }
+  "routes": [
+    { "src": "/Catalog_ADMIN.html", "dest": "/api/admin" },
+    { "handle": "filesystem" }
   ]
 }
