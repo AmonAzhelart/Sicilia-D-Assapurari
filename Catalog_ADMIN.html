@@ -2542,10 +2542,30 @@
 
         .tech-row {
             display: grid;
-            grid-template-columns: 38% 62%;
+            grid-template-columns: 24px 38% 1fr;
             border-bottom: 1px solid var(--border);
             position: relative;
             transition: all 0.3s;
+        }
+
+        .tech-drag-handle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            color: var(--text-light);
+            font-size: 0.75rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .tech-row:hover .tech-drag-handle {
+            opacity: 1;
+        }
+
+        .tech-row.drag-over {
+            background: rgba(216, 164, 79, 0.12);
+            outline: 1px solid var(--gold);
         }
 
         .tech-row:hover {
@@ -6212,7 +6232,8 @@
         function renderTech(arr) {
             var grid = document.getElementById('tech-grid');
             grid.innerHTML = arr.map(function (i, idx) {
-                return '<div class="tech-row">' +
+                return '<div class="tech-row" draggable="true">' +
+                    '<div class="tech-drag-handle" title="Trascina per riordinare"><i class="fa-solid fa-grip-vertical"></i></div>' +
                     '<div class="tech-key" contenteditable="true">' + i.k + '</div>' +
                     '<div class="tech-val" contenteditable="true">' + i.v + '</div>' +
                     '<button class="tech-delete admin-only" onclick="deleteTechRow(' + idx + ')" title="Elimina riga">' +
@@ -6220,6 +6241,47 @@
                     '</button>' +
                     '</div>';
             }).join('');
+            initTechDrag();
+        }
+
+        function initTechDrag() {
+            var grid = document.getElementById('tech-grid');
+            if (grid.dataset.dragInit) return;
+            grid.dataset.dragInit = '1';
+            var dragSrc = null;
+            grid.addEventListener('dragstart', function (e) {
+                var row = e.target.closest('.tech-row');
+                if (!row) return;
+                dragSrc = row;
+                e.dataTransfer.effectAllowed = 'move';
+                setTimeout(function () { row.style.opacity = '0.4'; }, 0);
+            });
+            grid.addEventListener('dragend', function () {
+                if (dragSrc) dragSrc.style.opacity = '';
+                dragSrc = null;
+                grid.querySelectorAll('.drag-over').forEach(function (r) { r.classList.remove('drag-over'); });
+            });
+            grid.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                var row = e.target.closest('.tech-row');
+                if (!row || row === dragSrc) return;
+                grid.querySelectorAll('.drag-over').forEach(function (r) { r.classList.remove('drag-over'); });
+                row.classList.add('drag-over');
+            });
+            grid.addEventListener('drop', function (e) {
+                e.preventDefault();
+                var row = e.target.closest('.tech-row');
+                if (!row || row === dragSrc || !dragSrc) return;
+                syncTechFromUI();
+                var product = APP.products[APP.activeProductIndex];
+                var rows = Array.from(grid.querySelectorAll('.tech-row'));
+                var fromIdx = rows.indexOf(dragSrc);
+                var toIdx = rows.indexOf(row);
+                var item = product.tech.splice(fromIdx, 1)[0];
+                product.tech.splice(toIdx, 0, item);
+                delete grid.dataset.dragInit;
+                renderTech(product.tech);
+            });
         }
 
         function addTechRow() {
