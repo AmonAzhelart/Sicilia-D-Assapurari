@@ -24,7 +24,7 @@
       ]
     },
     {
-      "source": "/(admin.html|admin/(.*)|admin-login.html)",
+      "source": "/(admin.*)",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ]
