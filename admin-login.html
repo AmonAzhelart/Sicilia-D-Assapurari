@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="it" style="background:#14100d;color:#f3ddae;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#14100d">
+  <title>Accesso Amministratore</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      background: #14100d;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 360px;
+      background: #1d160f;
+      border: 1px solid rgba(216,164,79,0.22);
+      border-radius: 20px;
+      padding: 44px 36px 40px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .eyebrow {
+      font-size: 0.6rem;
+      font-weight: 600;
+      letter-spacing: 0.4em;
+      color: #d8a44f;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .rule {
+      width: 48px;
+      height: 1px;
+      background: linear-gradient(to right, transparent, #d8a44f, transparent);
+      opacity: 0.5;
+      margin-bottom: 8px;
+    }
+
+    .title {
+      font-family: 'Cinzel', serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      color: #f3ddae;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+      text-align: center;
+    }
+
+    .error-msg {
+      width: 100%;
+      background: rgba(255,90,60,0.12);
+      border: 1px solid rgba(255,90,60,0.35);
+      color: #ff8a5b;
+      font-size: 0.78rem;
+      letter-spacing: 0.03em;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+
+    form { width: 100%; }
+
+    label {
+      width: 100%;
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      color: #9f7f55;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    input[type="password"] {
+      width: 100%;
+      background: #16120f;
+      border: 1px solid #4b3927;
+      border-radius: 10px;
+      color: #f3ddae;
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 13px 16px;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 24px;
+    }
+    input[type="password"]:focus { border-color: rgba(216,164,79,0.55); }
+
+    button[type="submit"] {
+      width: 100%;
+      background: linear-gradient(135deg, #d8a44f 0%, #c08a3a 100%);
+      color: #14100d;
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button[type="submit"]:hover { opacity: 0.88; }
+    button[type="submit"]:active,
+    button[type="submit"]:disabled { opacity: 0.6; }
+    button[type="submit"]:focus-visible,
+    .back:focus-visible { outline: 2px solid #d8a44f; outline-offset: 3px; }
+
+    .back {
+      color: #9f7f55;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .back:hover { color: #d8a44f; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="eyebrow">Area Riservata</div>
+    <div class="rule"></div>
+    <h1 class="title">Amministratore</h1>
+
+    <div class="error-msg" id="err" role="alert" hidden>Password non corretta</div>
+
+    <form method="POST" action="/api/login" id="login">
+      <label for="pwd">Password</label>
+      <input type="password" id="pwd" name="password" autocomplete="current-password" autofocus required>
+      <button type="submit">Accedi</button>
+    </form>
+  </main>
+  <a class="back" href="/">← Torna al catalogo</a>
+
+  <script>
+    if (new URLSearchParams(location.search).has('error')) document.getElementById('err').hidden = false;
+    document.getElementById('login').addEventListener('submit', function (e) {
+      e.submitter && (e.submitter.disabled = true);
+    });
+  </script>
+</body>
+</html>
