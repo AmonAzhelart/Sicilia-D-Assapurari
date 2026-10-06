@@ -8,12 +8,14 @@ import type { Product } from '../types';
 import { isBlankHtml, type ProductRef } from '../lib/catalog';
 import { useAdmin } from '../lib/admin';
 import { cx, useEscape, useScrollLock } from '../lib/hooks';
+import { priceInfo } from '../lib/pricing';
 import { useNav } from '../lib/router';
 import { moveItem, useSortable } from '../lib/sortable';
 import { toast } from '../lib/toast';
 import { Editable, RichText } from './Editable';
 import { Icon } from './Icon';
 import { ImageViewer } from './ImageViewer';
+import { Offers } from './Offers';
 import { AdminIconButton, Media } from './ui';
 
 type Tab = 'tech' | 'desc' | 'pair';
@@ -80,6 +82,7 @@ function SheetContent({ product, onOpenViewer }: { product: Product; onOpenViewe
   const grew = product.images.length > imageCount.current;
   useEffect(() => { imageCount.current = product.images.length; });
   const update = (patch: Partial<Product>) => admin?.updateProduct(product.uid, patch);
+  const price = priceInfo(product);
   const edit = (field: 'brand' | 'name' | 'infoLine' | 'price') => (admin ? (value: string) => update({ [field]: value }) : undefined);
 
   // nel sito pubblico le sezioni vuote (o con il testo segnaposto) non vengono mostrate
@@ -114,7 +117,10 @@ function SheetContent({ product, onOpenViewer }: { product: Product; onOpenViewe
               placeholder="Inserisci un dettaglio rapido" singleLine />
           )}
           <div className="p-price-row">
-            <Editable className="p-price" value={product.price} onChange={edit('price')} singleLine />
+            {/* in admin si modifica il prezzo pieno; lo sconto si imposta nel riquadro offerte */}
+            {!admin && price.discount > 0 && <s className="p-price-old">{product.price}</s>}
+            <Editable className="p-price" value={admin ? product.price : price.label} onChange={edit('price')} singleLine />
+            {price.discount > 0 && <span className="sale-badge">-{price.discount}%</span>}
             <div className="shipping-free-badge"><Icon icon={faTruckFast} /><span>Gratuita</span></div>
           </div>
         </div>
@@ -127,6 +133,7 @@ function SheetContent({ product, onOpenViewer }: { product: Product; onOpenViewe
 
       <div className="sheet-body-mobile" ref={bodyRef}>
         <div className="p-content">
+          <Offers product={product} />
           {visible.map(({ id, title }) => (
             <div key={id} className={cx('tab-content', tab === id && 'active')} id={`tab-${id}`} role="tabpanel">
               <h4 className="sheet-section-title">{title}</h4>

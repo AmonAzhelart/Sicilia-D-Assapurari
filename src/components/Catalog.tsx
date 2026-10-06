@@ -6,6 +6,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Product, Sub } from '../types';
 import { useAdmin } from '../lib/admin';
+import { packOffers, priceInfo } from '../lib/pricing';
 import { useNav } from '../lib/router';
 import { useSortable } from '../lib/sortable';
 import { catalogStore } from '../lib/store';
@@ -162,23 +163,42 @@ export function Section({ macro, sub }: { macro: Macro; sub: Sub }) {
 export const ProductCard = memo(function ProductCard({ product, eager }: { product: Product; eager: boolean }) {
   const nav = useNav();
   const admin = useAdmin();
-  const label = [product.brand, product.name, product.price].filter(Boolean).join(' – ');
+  const price = priceInfo(product);
+  const label = [product.brand, product.name, price.label].filter(Boolean).join(' – ');
   return (
     <LinkBox className="card visible" href={nav.productHref(product.uid)} onOpen={() => nav.openProduct(product.uid)}
       asDiv={!!admin} label={label}>
       <Media className="card-media" imgClassName="card-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
         variant="card" eager={eager} alt={product.name}
         placeholder={<div className="card-no-img" style={{ display: 'flex' }}><Icon icon={faImage} style={{ fontSize: '2rem', color: '#ddd' }} /></div>} />
+      <OfferBadges product={product} className="card-badges" />
       <div className="card-info">
         <div className="card-brand">{product.brand}</div>
         <div className="card-name">{product.name}</div>
         {product.infoLine && <div className="card-subtitle">{product.infoLine}</div>}
-        <div className="card-price">{product.price}</div>
+        <div className="card-price">
+          {price.discount > 0 && <s className="price-old">{product.price}</s>}
+          {price.label}
+        </div>
       </div>
       {admin && <CardAdminTools uid={product.uid} />}
     </LinkBox>
   );
 });
+
+/** Badge "-20%" (prodotto scontato) e "PACK" (offerte multiple, con lo sconto massimo). */
+export function OfferBadges({ product, className }: { product: Product; className: string }) {
+  const { discount } = priceInfo(product);
+  const packs = packOffers(product);
+  if (!discount && !packs.length) return null;
+  const bestPack = Math.max(0, ...packs.map((p) => p.discount));
+  return (
+    <div className={className}>
+      {discount > 0 && <span className="sale-badge">-{discount}%</span>}
+      {packs.length > 0 && <span className="pack-badge">PACK{bestPack ? ` -${bestPack}%` : ''}</span>}
+    </div>
+  );
+}
 
 function CardAdminTools({ uid }: { uid: string }) {
   const admin = useAdmin()!;

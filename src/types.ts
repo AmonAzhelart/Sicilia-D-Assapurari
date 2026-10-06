@@ -8,6 +8,12 @@ export interface TechRow {
   v: string;
 }
 
+export interface Pack {
+  qty: number;
+  /** Sconto percentuale sulla somma dei prezzi dei pezzi. */
+  discount: number;
+}
+
 export interface Product {
   /** Solo client: identificativo stabile per React e per l'URL. Mai salvato. */
   uid: string;
@@ -23,6 +29,10 @@ export interface Product {
   tech: TechRow[];
   desc: string;
   pair: string;
+  /** Opzionale: sconto percentuale del prodotto. Assente = non scontato. */
+  discount?: number;
+  /** Opzionale: offerte pack. */
+  packs?: Pack[];
   [extra: string]: unknown;
 }
 

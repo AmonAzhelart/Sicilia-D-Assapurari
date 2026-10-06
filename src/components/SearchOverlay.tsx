@@ -4,7 +4,9 @@ import { faMagnifyingGlass, faXmark } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog } from '../types';
 import { indexCatalog, searchCatalog } from '../lib/catalog';
 import { useEscape, useScrollLock } from '../lib/hooks';
+import { priceInfo } from '../lib/pricing';
 import { useNav } from '../lib/router';
+import { OfferBadges } from './Catalog';
 import { Icon } from './Icon';
 import { LinkBox, Media } from './ui';
 
@@ -91,11 +93,12 @@ export function SearchOverlay({ catalog, initialQuery }: { catalog: Catalog; ini
                     <div className="search-result-content">
                       <div className="search-result-topline">
                         <div className="search-result-brand">{product.brand || 'Prodotto'}</div>
-                        <div className="search-result-price">{product.price}</div>
+                        <div className="search-result-price">{priceInfo(product).label}</div>
                       </div>
                       <div className="search-result-name">{product.name}</div>
                       {product.infoLine && <div className="search-result-subtitle">{product.infoLine}</div>}
                       <div className="search-result-meta">
+                        <OfferBadges product={product} className="search-result-offers" />
                         <span className="search-result-badge subcategory">{sub?.name || 'Sottocategoria'}</span>
                         <span className="search-result-badge">{macro.name}</span>
                       </div>
