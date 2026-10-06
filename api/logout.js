@@ -1,9 +1,6 @@
-const COOKIE = '__admin_sid';
+import { COOKIE, redirect } from './_lib.js';
 
-module.exports = function handler(req, res) {
-  res.setHeader('Set-Cookie',
-    `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`
-  );
-  res.setHeader('Location', '/admin-login.html');
-  res.status(302).end();
-};
+export default function handler(req, res) {
+  res.setHeader('Set-Cookie', `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
+  redirect(res, '/admin-login.html');
+}

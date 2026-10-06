@@ -3,17 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#14100d">
   <title>Accesso Amministratore</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
+      min-height: 100vh;
       min-height: 100dvh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 22px;
       background: #14100d;
       font-family: 'Plus Jakarta Sans', sans-serif;
       padding: 24px;
@@ -30,11 +37,9 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 0;
     }
 
     .eyebrow {
-      font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 0.6rem;
       font-weight: 600;
       letter-spacing: 0.4em;
@@ -73,9 +78,9 @@
       border-radius: 10px;
       margin-bottom: 18px;
       text-align: center;
-      display: none;
     }
-    .error-msg.visible { display: block; }
+
+    form { width: 100%; }
 
     label {
       width: 100%;
@@ -94,13 +99,12 @@
       border: 1px solid #4b3927;
       border-radius: 10px;
       color: #f3ddae;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      font-size: 0.95rem;
+      font-family: inherit;
+      font-size: 1rem;
       padding: 13px 16px;
       outline: none;
       transition: border-color 0.2s;
       margin-bottom: 24px;
-      -webkit-text-security: disc;
     }
     input[type="password"]:focus { border-color: rgba(216,164,79,0.55); }
 
@@ -108,7 +112,7 @@
       width: 100%;
       background: linear-gradient(135deg, #d8a44f 0%, #c08a3a 100%);
       color: #14100d;
-      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-family: inherit;
       font-size: 0.78rem;
       font-weight: 700;
       letter-spacing: 0.22em;
@@ -120,28 +124,42 @@
       transition: opacity 0.2s;
     }
     button[type="submit"]:hover { opacity: 0.88; }
-    button[type="submit"]:active { opacity: 0.75; }
+    button[type="submit"]:active,
+    button[type="submit"]:disabled { opacity: 0.6; }
+    button[type="submit"]:focus-visible,
+    .back:focus-visible { outline: 2px solid #d8a44f; outline-offset: 3px; }
+
+    .back {
+      color: #9f7f55;
+      font-size: 0.72rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .back:hover { color: #d8a44f; }
   </style>
 </head>
 <body>
-  <div class="card">
+  <main class="card">
     <div class="eyebrow">Area Riservata</div>
     <div class="rule"></div>
-    <div class="title">Amministratore</div>
+    <h1 class="title">Amministratore</h1>
 
-    <div class="error-msg" id="err">Password non corretta</div>
+    <div class="error-msg" id="err" role="alert" hidden>Password non corretta</div>
 
-    <form method="POST" action="/api/login" style="width:100%">
+    <form method="POST" action="/api/login" id="login">
       <label for="pwd">Password</label>
       <input type="password" id="pwd" name="password" autocomplete="current-password" autofocus required>
       <button type="submit">Accedi</button>
     </form>
-  </div>
+  </main>
+  <a class="back" href="/">← Torna al catalogo</a>
 
   <script>
-    if (location.search.includes('error=1')) {
-      document.getElementById('err').classList.add('visible');
-    }
+    if (new URLSearchParams(location.search).has('error')) document.getElementById('err').hidden = false;
+    document.getElementById('login').addEventListener('submit', function (e) {
+      e.submitter && (e.submitter.disabled = true);
+    });
   </script>
 </body>
 </html>
