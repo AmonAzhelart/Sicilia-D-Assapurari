@@ -1,5 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/Catalog_ADMIN.html", "destination": "/api/admin" }
-  ]
-}
