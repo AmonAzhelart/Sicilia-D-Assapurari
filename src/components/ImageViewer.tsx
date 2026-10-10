@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { faChevronLeft, faChevronRight, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { cx } from '../lib/hooks';
-import { edgeBackground, needsProcessing, surfaceStyle, useProcessedImage } from '../lib/images';
+import { edgeFill, needsProcessing, surfaceStyle, useProcessedImage } from '../lib/images';
 import { Icon } from './Icon';
+import { FadeImg } from './ui';
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_MS = 280;
@@ -20,8 +21,7 @@ export function ImageViewer({ images, modes, start, onClose }: {
   const result = useProcessedImage(images[index], modes[index], 'viewer', true, true);
   const photo = !!result?.surface.photo;
   const full = !needsProcessing(modes[index]);
-  const [edge, setEdge] = useState<string | undefined>();
-  const shownEdge = full ? edge : undefined;
+  const fill = full ? edgeFill(images[index]) : undefined;
   const total = images.length;
 
   const apply = useCallback(() => {
@@ -60,7 +60,6 @@ export function ImageViewer({ images, modes, start, onClose }: {
   useEffect(() => {
     t.current = { scale: 1, x: 0, y: 0 };
     setLoaded(false);
-    setEdge(undefined);
     apply();
   }, [index, apply]);
 
@@ -181,15 +180,16 @@ export function ImageViewer({ images, modes, start, onClose }: {
             <Icon icon={faChevronLeft} />
           </button>
         )}
-        <div ref={stageRef} className={cx('image-viewer-stage', photo && 'has-photo-bg')} style={surfaceStyle(result?.surface, shownEdge)}
+        <div ref={stageRef} className={cx('image-viewer-stage', photo && 'has-photo-bg', full && 'is-full')} style={surfaceStyle(result?.surface, full, fill)}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
           onDoubleClick={(e) => {
             // su touch il doppio tap e' gia' gestito da onPointerUp
             if (lastPointerType.current === 'mouse') zoomAt(t.current.scale > 1.2 ? 1 : 2.5, e.clientX, e.clientY);
           }}>
           <div className="image-light-backdrop" style={photo ? { opacity: 0 } : undefined} />
+          {fill === null && <FadeImg key={`b${images[index]}`} className="media-blur" src={images[index]} eager alt="" />}
           <img ref={imgRef} key={result?.src} className="image-viewer-img" src={result?.src} alt={`Immagine ${index + 1} di ${total}`}
-            draggable={false} style={{ opacity: loaded ? 1 : 0 }} onLoad={(e) => { if (full) setEdge(edgeBackground(images[index], e.currentTarget, stageRef.current)); setLoaded(true); }} />
+            draggable={false} style={{ opacity: loaded ? 1 : 0 }} onLoad={(e) => { if (full) edgeFill(images[index], e.currentTarget); setLoaded(true); }} />
         </div>
         {total > 1 && (
           <button type="button" className="image-viewer-nav next" onClick={() => go(1)} aria-label="Immagine successiva">

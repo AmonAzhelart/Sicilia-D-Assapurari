@@ -183,70 +183,50 @@ function stripWhiteBackground(ctx: CanvasRenderingContext2D, width: number, heig
   };
 }
 
-/* ---------- Colore dei bordi (foto "Full Screen") ---------- */
+/* ---------- Fondo delle foto "Full Screen" ---------- */
 
-// Le foto "Full Screen" restano intere (contain): lo sfondo prende il colore dei loro bordi,
-// cosi' un packshot su bianco riempie il riquadro senza tagli ne' fasce.
-interface Edges { top: string; right: string; bottom: string; left: string }
-const edges = new Map<string, Edges | null>();
+// Le foto "Full Screen" restano intere. Se i bordi hanno un colore uniforme (packshot su fondo pieno)
+// il riquadro prende quel colore e la foto ci si fonde; altrimenti dietro va la foto stessa sfocata (CSS).
+const fills = new Map<string, string | null>();
 let probe: CanvasRenderingContext2D | null = null;
 const SIZE = 32;
 
-/** Colore medio di ciascun lato di un'immagine gia' caricata (lettura 32x32, costo trascurabile). */
-function sampleEdges(src: string, img: HTMLImageElement): Edges | null {
-  if (edges.has(src)) return edges.get(src)!;
-  let result: Edges | null = null;
+/**
+ * Colore dei bordi se uniforme, null se no (-> sfondo sfocato), undefined se non ancora noto.
+ * Con `img` (gia' caricata) lo calcola: lettura 32x32, una volta per immagine.
+ */
+export function edgeFill(src: string, img?: HTMLImageElement): string | null | undefined {
+  if (fills.has(src) || !img) return fills.get(src);
+  let fill: string | null = null;
   try {
-    if (!probe) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = SIZE;
-      probe = canvas.getContext('2d', { willReadFrequently: true });
-    }
+    probe ??= Object.assign(document.createElement('canvas'), { width: SIZE, height: SIZE })
+      .getContext('2d', { willReadFrequently: true });
     if (probe) {
       probe.clearRect(0, 0, SIZE, SIZE);
       probe.drawImage(img, 0, 0, SIZE, SIZE);
       const data = probe.getImageData(0, 0, SIZE, SIZE).data;
-      const average = (inSide: (x: number, y: number) => boolean) => {
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let y = 0; y < SIZE; y++) {
-          for (let x = 0; x < SIZE; x++) {
-            const i = (y * SIZE + x) * 4;
-            if (!inSide(x, y) || data[i + 3] < 128) continue;
-            r += data[i];
-            g += data[i + 1];
-            b += data[i + 2];
-            n++;
-          }
-        }
-        return n ? `rgb(${Math.round(r / n)}, ${Math.round(g / n)}, ${Math.round(b / n)})` : null;
-      };
-      const top = average((_, y) => y < 2);
-      const bottom = average((_, y) => y >= SIZE - 2);
-      const left = average((x) => x < 2);
-      const right = average((x) => x >= SIZE - 2);
-      if (top && bottom && left && right) result = { top, right, bottom, left };
+      const edge: number[] = [];
+      for (let y = 0; y < SIZE; y++) {
+        for (let x = 0; x < SIZE; x++) if (x < 2 || y < 2 || x >= SIZE - 2 || y >= SIZE - 2) edge.push((y * SIZE + x) * 4);
+      }
+      // colore di riferimento: la mediana dei bordi (il soggetto che tocca un lato non la sposta).
+      // Nel catalogo i packshot hanno >= 60% dei bordi vicino al fondo, le foto ambientate <= 45%.
+      const median = [0, 1, 2].map((c) => edge.map((i) => data[i + c]).sort((a, b) => a - b)[edge.length >> 1]);
+      const near = edge.filter((i) => data[i + 3] > 200
+        && Math.hypot(data[i] - median[0], data[i + 1] - median[1], data[i + 2] - median[2]) < 24).length;
+      if (near / edge.length >= 0.6) fill = `rgb(${median.join(', ')})`;
     }
   } catch { /* immagine di un altro dominio: niente lettura dei pixel */ }
-  edges.set(src, result);
-  return result;
+  fills.set(src, fill);
+  return fill;
 }
 
 /**
- * Sfondo che prolunga i bordi di una foto intera (object-fit: contain): le fasce sopra/sotto prendono
- * il colore del bordo alto/basso, quelle laterali dei lati. Il taglio cade sotto la foto, quindi non si vede.
+ * Sfondo del riquadro: colore dei bordi (foto "Full Screen" uniformi), sfumatura adattiva (foto elaborate)
+ * o quello del CSS (crema; per le foto "Full Screen" non uniformi c'e' sopra la copia sfocata).
  */
-export function edgeBackground(src: string, img: HTMLImageElement, box: HTMLElement | null): string | undefined {
-  const e = sampleEdges(src, img);
-  if (!e || !box?.clientHeight || !img.naturalHeight) return undefined;
-  const bandsTopBottom = img.naturalWidth / img.naturalHeight >= box.clientWidth / box.clientHeight;
-  return bandsTopBottom
-    ? `linear-gradient(180deg, ${e.top} 50%, ${e.bottom} 50%)`
-    : `linear-gradient(90deg, ${e.left} 50%, ${e.right} 50%)`;
-}
-
-/** Sfondo del riquadro: bordi della foto (foto intere), sfumatura adattiva (foto scontornate) o crema (CSS). */
-export function surfaceStyle(surface: Surface | undefined, edgeBg?: string): CSSProperties | undefined {
-  if (edgeBg) return { backgroundImage: edgeBg };
+export function surfaceStyle(surface: Surface | undefined, full: boolean, fill: string | null | undefined): CSSProperties | undefined {
+  if (full) return fill ? { backgroundColor: fill } : undefined;
   if (!surface?.photo) return undefined;
   return {
     backgroundImage: `radial-gradient(ellipse 78% 68% at 50% 42%, rgba(216, 164, 79, 0.07) 0%, rgba(255, 255, 255, 0) 72%), linear-gradient(180deg, ${surface.top} 0%, ${surface.bottom} 100%)`,

@@ -7,7 +7,6 @@ import {
 import type { Catalog, Macro, Product, Sub } from '../types';
 import { useAdmin } from '../lib/admin';
 import { cx, scrollToSection } from '../lib/hooks';
-import { indexCatalog } from '../lib/catalog';
 import { addToSelection, selectionStore } from '../lib/personal';
 import { formatPrice, packOffers, priceInfo, type PackOffer } from '../lib/pricing';
 import { useNav } from '../lib/router';
@@ -336,16 +335,14 @@ export const ProductCard = memo(function ProductCard({ product, eager = false, c
 });
 
 /** "+" sulla card: aggiunge un pezzo alla selezione; se il prodotto c'e' gia' mostra quanti pezzi. */
-function QuickAdd({ product }: { product: Product }) {
-  const slug = indexCatalog(catalogStore.get()!).productSlug.get(product.uid) ?? '';
-  const qty = useStore(selectionStore)[slug] ?? 0;
-  if (!slug) return null;
+export function QuickAdd({ product }: { product: Product }) {
+  const qty = useStore(selectionStore)[product.id] ?? 0;
   return (
     <button type="button" className={cx('pcard-add', qty > 0 && 'in')}
       aria-label={qty ? `Aggiungi un altro pezzo (nella selezione: ${qty})` : 'Aggiungi alla selezione'}
       title={qty ? `Nella selezione: ${qty} pz` : 'Aggiungi alla selezione'}
       onClick={() => {
-        addToSelection(slug, 1);
+        addToSelection(product.id, 1);
         toast(`Aggiunto alla selezione: ${product.name || 'prodotto'}`);
       }}>
       {qty > 0 ? <span className="pcard-add-count">{qty > 99 ? '99+' : qty}</span> : <Icon icon={faPlus} />}

@@ -21,7 +21,8 @@ interface EditableProps extends Omit<HTMLAttributes<HTMLElement>, 'onChange'> {
  */
 export function Editable({ value, onChange, html, as: Tag = 'div', placeholder, singleLine, ...rest }: EditableProps) {
   const ref = useRef<HTMLElement>(null);
-  const safe = useMemo(() => (html ? sanitizeHtml(value) : value), [html, value]);
+  // in sola lettura via anche le righe vuote finali (mentre si scrive servono)
+  const safe = useMemo(() => (html ? sanitizeHtml(value, !onChange) : value), [html, value, !onChange]);
   // textContent ignora il text-transform CSS: i campi in maiuscoletto si salvano come digitati
   const read = (el: HTMLElement) => (html ? el.innerHTML : singleLine ? el.textContent ?? '' : el.innerText);
 

@@ -7,7 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import type { Catalog } from '../types';
-import { indexCatalog, type ProductRef } from '../lib/catalog';
+import { indexCatalog, productFromParam, type ProductRef } from '../lib/catalog';
 import { useEscape, useScrollLock } from '../lib/hooks';
 import { clearSelection, selectionStore, setQuantity } from '../lib/personal';
 import { formatPrice, lineQuote, priceInfo, type LineQuote } from '../lib/pricing';
@@ -21,7 +21,8 @@ import { Media } from './ui';
 /* ---------- Riepilogo della selezione ---------- */
 
 interface Line extends ProductRef {
-  slug: string;
+  /** Chiave nella selezione salvata (codice prodotto, o vecchio slug non ancora convertito). */
+  key: string;
   quote: LineQuote;
 }
 
@@ -30,9 +31,9 @@ export function useSelectionSummary(catalog: Catalog) {
   return useMemo(() => {
     const index = indexCatalog(catalog);
     const lines: Line[] = [];
-    for (const [slug, qty] of Object.entries(items)) {
-      const ref = index.productBySlug.get(slug);
-      if (ref) lines.push({ ...ref, slug, quote: lineQuote(ref.product, qty) });
+    for (const [key, qty] of Object.entries(items)) {
+      const ref = productFromParam(index, key);
+      if (ref) lines.push({ ...ref, key, quote: lineQuote(ref.product, qty) });
     }
     const priced = lines.filter((l) => l.quote.total !== null);
     const total = priced.reduce((n, l) => n + l.quote.total!, 0);
@@ -124,7 +125,7 @@ export function SelectionDrawer({ catalog }: { catalog: Catalog }) {
         {summary.lines.length ? (
           <>
             <div className="drawer-list">
-              {summary.lines.map((line) => <SelectionLine key={line.slug} line={line} />)}
+              {summary.lines.map((line) => <SelectionLine key={line.key} line={line} />)}
             </div>
             <div className="drawer-foot">
               <div className="drawer-row"><span>Prodotti</span><span>{summary.pieces} pz</span></div>
@@ -160,7 +161,7 @@ export function SelectionDrawer({ catalog }: { catalog: Catalog }) {
 
 function SelectionLine({ line }: { line: Line }) {
   const nav = useNav();
-  const { product, quote, slug } = line;
+  const { product, quote, key } = line;
   const price = priceInfo(product);
   const saving = quote.list !== null && quote.total !== null ? quote.list - quote.total : 0;
   return (
@@ -176,14 +177,14 @@ function SelectionLine({ line }: { line: Line }) {
           {price.label} cad.{quote.packs.length > 0 && <span className="sel-pack"> · {packNote(quote)}</span>}
         </div>
         <div className="sel-controls">
-          <Stepper value={quote.qty} onChange={(n) => setQuantity(slug, n)} />
+          <Stepper value={quote.qty} onChange={(n) => setQuantity(key, n)} />
           <div className="sel-total">
             {saving > 0.004 && <s>{formatPrice(quote.list!, product.price)}</s>}
             <strong>{quote.total !== null ? formatPrice(quote.total, product.price) : 'Su richiesta'}</strong>
           </div>
         </div>
       </div>
-      <button type="button" className="sel-remove" onClick={() => setQuantity(slug, 0)} aria-label={`Rimuovi ${product.name}`}>
+      <button type="button" className="sel-remove" onClick={() => setQuantity(key, 0)} aria-label={`Rimuovi ${product.name}`}>
         <Icon icon={faTrash} />
       </button>
     </div>
@@ -194,11 +195,12 @@ function SelectionLine({ line }: { line: Line }) {
 export function SelectionBar({ catalog }: { catalog: Catalog }) {
   const nav = useNav();
   const { pieces, total, like, lines } = useSelectionSummary(catalog);
-  // prodotti tolti dal catalogo nel frattempo: rimossi anche dalla selezione
+  // selezione riallineata ai codici prodotto: via i prodotti tolti dal catalogo, vecchi slug convertiti
   const items = useStore(selectionStore);
   useEffect(() => {
-    const known = new Set(lines.map((l) => l.slug));
-    Object.keys(items).filter((slug) => !known.has(slug)).forEach((slug) => setQuantity(slug, 0));
+    const next: Record<string, number> = {};
+    for (const { key, product } of lines) next[product.id] = Math.min(999, (next[product.id] ?? 0) + items[key]);
+    if (JSON.stringify(next) !== JSON.stringify(items)) selectionStore.set(next);
   }, [items, lines]);
   if (!pieces) return null;
   return (

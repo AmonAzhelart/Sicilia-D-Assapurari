@@ -4,7 +4,7 @@ import { formatPrice, lineQuote, packOffers, parsePrice, priceInfo } from './pri
 import type { Product } from '../types';
 
 const product = (fields: Partial<Product>): Product => ({
-  uid: 'u1', categoryId: 's', brand: '', name: '', infoLine: '', price: '€ 40.00',
+  uid: 'u1', id: 'p1', categoryId: 's', brand: '', name: '', infoLine: '', price: '€ 40.00',
   images: [], imagesMode: [], tech: [], desc: '', pair: '', ...fields,
 });
 

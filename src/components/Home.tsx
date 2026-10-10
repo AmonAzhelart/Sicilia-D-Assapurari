@@ -3,7 +3,7 @@ import { faImage } from '@fortawesome/free-regular-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 import { faArrowDown, faArrowRight, faBagShopping, faCamera, faTruckFast } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro } from '../types';
-import { indexCatalog, splitTitle, type ProductRef } from '../lib/catalog';
+import { indexCatalog, productFromParam, splitTitle, type ProductRef } from '../lib/catalog';
 import { useAdmin } from '../lib/admin';
 import { cx, useReveal } from '../lib/hooks';
 import { recentStore } from '../lib/personal';
@@ -28,12 +28,13 @@ export function whatsappDigits(phone: string): string | null {
 export function HomePage({ catalog }: { catalog: Catalog }) {
   const ref = useRef<HTMLElement>(null);
   const index = indexCatalog(catalog);
-  const recentSlugs = useStore(recentStore);
+  const recentKeys = useStore(recentStore);
   const offers = useMemo(() => index.entries
     .filter(({ product }) => priceInfo(product).discount > 0 || packOffers(product).length > 0)
     .sort((a, b) => priceInfo(b.product).discount - priceInfo(a.product).discount)
     .slice(0, 16), [index]);
-  const recent = recentSlugs.map((slug) => index.productBySlug.get(slug)).filter((r): r is ProductRef => !!r);
+  // un prodotto una volta sola, anche se salvato sia col vecchio slug sia col codice
+  const recent = [...new Set(recentKeys.map((key) => productFromParam(index, key)).filter((r): r is ProductRef => !!r))];
   useReveal(ref, [offers.length, recent.length, catalog.macros.length]);
 
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({
@@ -155,12 +156,10 @@ function CategoryGrid({ macros }: { macros: Macro[] }) {
 
 /* ---------- Rail di prodotti ---------- */
 
-export function ProductRail({ id, kicker, title, items, compact }: {
-  id?: string; kicker: string; title: string; items: ProductRef[]; compact?: boolean;
-}) {
+function ProductRail({ id, kicker, title, items }: { id?: string; kicker: string; title: string; items: ProductRef[] }) {
   if (!items.length) return null;
   return (
-    <section className={cx('home-section rail-section', !compact && 'reveal')} id={id}>
+    <section className="home-section rail-section reveal" id={id}>
       <SectionHead kicker={kicker} title={title} />
       <ScrollRow wrapperClass="rail" scrollerClass="rail-track" label={title}>
         {items.map(({ product }) => <ProductCard key={product.uid} product={product} compact />)}

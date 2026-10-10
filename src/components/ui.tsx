@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import type { IconDefinition } from '@fortawesome/fontawesome-common-types';
 import { faChevronLeft, faChevronRight, faRotateRight } from '@fortawesome/free-solid-svg-icons';
 import { cx, useInView } from '../lib/hooks';
-import { edgeBackground, needsProcessing, surfaceStyle, useProcessedImage, type Variant } from '../lib/images';
+import { edgeFill, needsProcessing, surfaceStyle, useProcessedImage, type Variant } from '../lib/images';
 import { toastStore } from '../lib/toast';
 import { useStore } from '../lib/store';
 import { Icon } from './Icon';
@@ -18,42 +18,45 @@ interface MediaProps {
   eager?: boolean;
   alt?: string;
   placeholder?: ReactNode;
-  onSurface?: (photo: boolean) => void;
   onImageClick?: () => void;
 }
 
-export function Media({ className, imgClassName, src, mode, variant, eager, alt = '', placeholder, onSurface, onImageClick }: MediaProps) {
+export function Media({ className, imgClassName, src, mode, variant, eager, alt = '', placeholder, onImageClick }: MediaProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lazy = !!src && !eager && needsProcessing(mode);
   const inView = useInView(ref, lazy);
   const result = useProcessedImage(src, mode, variant, !lazy || inView, eager);
   const photo = !!result?.surface.photo;
+  // foto "Full Screen": sempre intera, sul colore dei suoi bordi o sulla propria copia sfocata
   const full = !!src && !needsProcessing(mode);
-  const [edge, setEdge] = useState<string | undefined>();
-  const onSurfaceRef = useRef(onSurface);
-  onSurfaceRef.current = onSurface;
-  useEffect(() => onSurfaceRef.current?.(photo), [photo]);
+  const fill = full ? edgeFill(src) : undefined;
+  const [, refresh] = useReducer((n: number) => n + 1, 0);
 
   return (
-    <div ref={ref} className={cx(className, photo && 'has-photo-bg')} style={surfaceStyle(result?.surface, full ? edge : undefined)}>
+    <div ref={ref} className={cx(className, photo && 'has-photo-bg', full && 'is-full')} style={surfaceStyle(result?.surface, full, fill)}>
       <div className="image-light-backdrop" style={photo ? { opacity: 0 } : undefined} />
+      {fill === null && <FadeImg key={`b${src}`} className="media-blur" src={src} eager alt="" />}
       {src ? (
         <FadeImg key={result?.src} className={imgClassName} src={result?.src} eager={eager} alt={alt} onClick={onImageClick}
-          onLoaded={full ? (img) => setEdge(edgeBackground(src, img, ref.current)) : undefined} />
+          onLoaded={full && fill === undefined ? (img) => { edgeFill(src, img); refresh(); } : undefined} />
       ) : placeholder}
     </div>
   );
 }
 
-function FadeImg({ src, className, eager, alt, onClick, onLoaded }: {
+export function FadeImg({ src, className, eager, alt, onClick, onLoaded }: {
   src?: string; className: string; eager?: boolean; alt: string; onClick?: () => void; onLoaded?: (img: HTMLImageElement) => void;
 }) {
-  const [loaded, setLoaded] = useState(false);
+  // 0 finche' non e' caricata; poi il rapporto reale, con cui le foto intere si adattano al riquadro (CSS --ar)
+  const [ratio, setRatio] = useState(0);
   return (
     <img className={className} src={src} alt={alt} loading={eager ? 'eager' : 'lazy'} decoding="async"
       fetchPriority={eager ? 'high' : 'low'} draggable={false}
-      onLoad={(e) => { onLoaded?.(e.currentTarget); setLoaded(true); }}
-      style={loaded ? { opacity: 1 } : undefined} onClick={onClick} />
+      onLoad={(e) => {
+        onLoaded?.(e.currentTarget);
+        setRatio(e.currentTarget.naturalWidth / e.currentTarget.naturalHeight || 1);
+      }}
+      style={ratio ? { opacity: 1, '--ar': ratio } as CSSProperties : undefined} onClick={onClick} />
   );
 }
 

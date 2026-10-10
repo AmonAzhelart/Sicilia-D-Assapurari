@@ -2,7 +2,7 @@
 // prima di inserirle nella pagina rimuoviamo tutto cio' che puo' eseguire codice.
 const DROP = 'script,style,iframe,frame,frameset,object,embed,link,meta,base,form,input,button,textarea,select,svg,math,img,video,audio,source,template';
 
-export function sanitizeHtml(html: string): string {
+export function sanitizeHtml(html: string, trimEnd = false): string {
   if (!html) return '';
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
@@ -16,5 +16,16 @@ export function sanitizeHtml(html: string): string {
       ) el.removeAttribute(attr.name);
     }
   });
+  if (trimEnd) trimTrailing(tpl.content);
   return tpl.innerHTML;
+}
+
+/** Righe vuote finali lasciate dall'editor (<div><br></div>, &nbsp;...), anche annidate. */
+function trimTrailing(node: ParentNode) {
+  let last = node.lastChild;
+  while (last && !last.textContent?.trim()) {
+    last.remove();
+    last = node.lastChild;
+  }
+  if (last instanceof Element) trimTrailing(last);
 }

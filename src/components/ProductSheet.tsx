@@ -17,14 +17,13 @@ import { useNav } from '../lib/router';
 import { moveItem, useSortable } from '../lib/sortable';
 import { catalogStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
-import { OfferBadges } from './Catalog';
+import { OfferBadges, QuickAdd } from './Catalog';
 import { Editable, RichText } from './Editable';
-import { ProductRail } from './Home';
 import { Icon } from './Icon';
 import { ImageViewer } from './ImageViewer';
 import { OffersEditor } from './Offers';
 import { packNote, Stepper } from './Selection';
-import { AdminIconButton, Media } from './ui';
+import { AdminIconButton, LinkBox, Media } from './ui';
 
 export function ProductSheet({ entry }: { entry?: ProductRef }) {
   const nav = useNav();
@@ -52,12 +51,10 @@ export function ProductSheet({ entry }: { entry?: ProductRef }) {
   }, [open]);
 
   // "visti di recente" (solo per i clienti)
-  const viewedUid = entry?.product.uid;
+  const viewedId = entry?.product.id;
   useEffect(() => {
-    const catalog = catalogStore.get();
-    const slug = viewedUid && catalog && indexCatalog(catalog).productSlug.get(viewedUid);
-    if (slug && !admin) markViewed(slug);
-  }, [viewedUid, admin]);
+    if (viewedId && !admin) markViewed(viewedId);
+  }, [viewedId, admin]);
 
   const product = shown?.product;
   return (
@@ -84,12 +81,11 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
   const nav = useNav();
   const admin = useAdmin();
   const [qty, setQty] = useState(1);
-  // mobile: superata la foto, i pulsanti diventano una barra con il nome del prodotto
+  // superata la foto (mobile) o il titolo (desktop) i pulsanti diventano una barra con il nome del prodotto
   const [stuck, setStuck] = useState(false);
   const price = priceInfo(product);
   const facts = keyFacts(product.tech);
   const index = indexCatalog(catalogStore.get()!);
-  const slug = index.productSlug.get(product.uid) ?? '';
   const update = (patch: Partial<Product>) => admin?.updateProduct(product.uid, patch);
   const edit = (field: 'brand' | 'name' | 'infoLine' | 'price') => (admin ? (value: string) => update({ [field]: value }) : undefined);
 
@@ -103,7 +99,7 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
     const macro = index.byUid.get(product.uid)?.macro;
     const others = index.entries.filter((e) => e.macro === macro && e.product.uid !== product.uid);
     return [...others.filter((e) => e.product.categoryId === product.categoryId),
-      ...others.filter((e) => e.product.categoryId !== product.categoryId)].slice(0, 12);
+      ...others.filter((e) => e.product.categoryId !== product.categoryId)].slice(0, 4);
   }, [index, product.uid, product.categoryId]);
 
   // nel sito pubblico le sezioni vuote (o con il testo segnaposto) non vengono mostrate
@@ -142,7 +138,7 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
           </button>
         </div>
 
-        <div className="pd-info">
+        <div className="pd-info" onScroll={(e) => setStuck(e.currentTarget.scrollTop > 110)}>
           <header className="pd-head">
             <Editable className="pd-brand" value={product.brand} onChange={edit('brand')} singleLine />
             <Editable className="pd-title" role="heading" aria-level={2} value={product.name} onChange={edit('name')} singleLine />
@@ -166,7 +162,7 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
           )}
 
           {admin ? <OffersEditor product={product} /> : <PackPicker product={product} qty={qty} onSelect={setQty} />}
-          {!admin && slug && <InSelection slug={slug} />}
+          {!admin && <InSelection id={product.id} />}
 
           {hasDesc && (
             <Block title="Descrizione" open>
@@ -202,13 +198,15 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
           )}
 
           {!admin && related.length > 0 && (
-            <div className="pd-related">
-              <ProductRail kicker="Dalla stessa selezione" title="Potrebbero piacerti" items={related} compact />
-            </div>
+            <Block title="Potrebbero piacerti" open>
+              <ul className="pd-rel">
+                {related.map(({ product: p }) => <RelatedItem key={p.uid} product={p} />)}
+              </ul>
+            </Block>
           )}
         </div>
 
-        {!admin && slug && <BuyBar product={product} slug={slug} qty={qty} onQty={setQty} />}
+        {!admin && <BuyBar product={product} qty={qty} onQty={setQty} />}
       </div>
     </div>
   );
@@ -225,6 +223,29 @@ function Block({ title, meta, open, children }: { title: string; meta?: string; 
       </summary>
       <div className="pd-block-body">{children}</div>
     </details>
+  );
+}
+
+/** Prodotto correlato: riga compatta (foto, nome, prezzo) con il "+" per aggiungerlo al volo. */
+function RelatedItem({ product }: { product: Product }) {
+  const nav = useNav();
+  const price = priceInfo(product);
+  return (
+    <li className="pd-rel-item">
+      <LinkBox className="pd-rel-link" href={nav.productHref(product.uid)} onOpen={() => nav.openProduct(product.uid)}>
+        <Media className="pd-rel-media" imgClassName="pd-rel-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
+          variant="search" alt="" placeholder={<div className="mini-no-img"><Icon icon={faImage} /></div>} />
+        <span className="pd-rel-text">
+          <span className="pd-rel-brand">{product.brand}</span>
+          <span className="pd-rel-name">{product.name}</span>
+          <span className="pd-rel-price">
+            <strong>{price.label}</strong>
+            {price.discount > 0 && <s>{product.price}</s>}
+          </span>
+        </span>
+      </LinkBox>
+      <QuickAdd product={product} />
+    </li>
   );
 }
 
@@ -256,9 +277,9 @@ function PackPicker({ product, qty, onSelect }: { product: Product; qty: number;
   );
 }
 
-function InSelection({ slug }: { slug: string }) {
+function InSelection({ id }: { id: string }) {
   const nav = useNav();
-  const qty = useStore(selectionStore)[slug] ?? 0;
+  const qty = useStore(selectionStore)[id] ?? 0;
   if (!qty) return null;
   return (
     <button type="button" className="pd-in-selection" onClick={nav.openSelection}>
@@ -268,11 +289,11 @@ function InSelection({ slug }: { slug: string }) {
   );
 }
 
-function BuyBar({ product, slug, qty, onQty }: { product: Product; slug: string; qty: number; onQty: (qty: number) => void }) {
+function BuyBar({ product, qty, onQty }: { product: Product; qty: number; onQty: (qty: number) => void }) {
   const quote = lineQuote(product, qty);
   const saving = quote.list !== null && quote.total !== null ? quote.list - quote.total : 0;
   const add = () => {
-    addToSelection(slug, qty);
+    addToSelection(product.id, qty);
     toast(`Aggiunto alla selezione: ${qty} × ${product.name || 'prodotto'}`);
     onQty(1);
   };

@@ -1,5 +1,6 @@
 // Dati personali del cliente, salvati solo nel suo browser:
-// la selezione (richiesta d'ordine) e i prodotti visti di recente. Chiave = slug del prodotto.
+// la selezione (richiesta d'ordine) e i prodotti visti di recente. Chiave = codice del prodotto
+// (le chiavi salvate prima dei codici sono vecchi slug "brand-nome": li risolve productFromParam).
 import { createStore } from './store';
 
 const SELECTION_KEY = 'sda_selection_v1';
@@ -24,7 +25,7 @@ const isQuantities = (v: unknown): v is Record<string, number> =>
   !!v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).every((n) => Number.isInteger(n) && n > 0);
 const isSlugs = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === 'string');
 
-/** slug prodotto -> quantita', nell'ordine di inserimento. */
+/** codice prodotto -> quantita', nell'ordine di inserimento. */
 export const selectionStore = createStore<Record<string, number>>(load(SELECTION_KEY, isQuantities, {}));
 export const recentStore = createStore<string[]>(load(RECENT_KEY, isSlugs, []));
 
@@ -38,18 +39,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
-export function setQuantity(slug: string, qty: number) {
+export function setQuantity(key: string, qty: number) {
   selectionStore.set((items) => {
     const next = { ...items };
-    if (qty > 0) next[slug] = Math.min(999, Math.round(qty));
-    else delete next[slug];
+    if (qty > 0) next[key] = Math.min(999, Math.round(qty));
+    else delete next[key];
     return next;
   });
 }
 
-export const addToSelection = (slug: string, qty: number) => setQuantity(slug, (selectionStore.get()[slug] ?? 0) + qty);
+export const addToSelection = (id: string, qty: number) => setQuantity(id, (selectionStore.get()[id] ?? 0) + qty);
 export const clearSelection = () => selectionStore.set({});
 
-export function markViewed(slug: string) {
-  recentStore.set((list) => (list[0] === slug ? list : [slug, ...list.filter((s) => s !== slug)].slice(0, 12)));
+export function markViewed(id: string) {
+  recentStore.set((list) => (list[0] === id ? list : [id, ...list.filter((s) => s !== id)].slice(0, 12)));
 }

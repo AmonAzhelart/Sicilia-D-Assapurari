@@ -3,7 +3,7 @@ import { faImage } from '@fortawesome/free-regular-svg-icons';
 import { faExpand } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Product } from '../types';
 import type { AdminApi } from '../lib/admin';
-import { CONFIG_FILE, loadFromGitLab, macroFileName, normalizeProduct, serializeCatalog } from '../lib/catalog';
+import { CONFIG_FILE, loadFromGitLab, macroFileName, normalizeProduct, productId, serializeCatalog } from '../lib/catalog';
 import { compressImage } from '../lib/images';
 import { moveItem } from '../lib/sortable';
 import { catalogStore, createStore } from '../lib/store';
@@ -93,7 +93,10 @@ const withDefaults = (p: Product): Product => ({
   price: p.price || '€ 0.00',
 });
 
-const newProduct = (categoryId: string) => normalizeProduct({
+/** Codice per un prodotto nuovo o incollato (quello copiato appartiene all'originale). */
+const freshId = () => productId(new Set(getCatalog().macros.flatMap((m) => m.products.map((p) => p.id))));
+
+const newProduct = (categoryId: string): Product => ({ ...normalizeProduct({
   brand: 'BRAND',
   name: 'Nuovo Prodotto',
   infoLine: '',
@@ -103,7 +106,7 @@ const newProduct = (categoryId: string) => normalizeProduct({
   tech: [{ k: 'Uve', v: 'Merlot' }, { k: 'Annata', v: '2024' }],
   desc: '<p>Descrizione emozionale del prodotto...</p>',
   pair: '<p>Abbinamenti consigliati...</p>',
-}, categoryId);
+}, categoryId), id: freshId() });
 
 /* ---------- API usata dai componenti ---------- */
 
@@ -267,7 +270,7 @@ export const adminApi: AdminApi = {
       toast('Copia prima un prodotto.', 'info');
       return null;
     }
-    const product = withDefaults(normalizeProduct(data as Record<string, unknown>, subId));
+    const product = withDefaults({ ...normalizeProduct(data as Record<string, unknown>, subId), id: freshId() });
     update((c) => mapMacro(c, macroId, (m) => ({ ...m, products: [...m.products, product] })));
     toast('Prodotto incollato nella sottocategoria.');
     return product.uid;
