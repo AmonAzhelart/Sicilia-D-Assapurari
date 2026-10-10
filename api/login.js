@@ -24,5 +24,5 @@ export default async function handler(req, res) {
   const expiry = Date.now() + TTL_MS;
   res.setHeader('Set-Cookie',
     `${COOKIE}=${expiry}.${sign(expiry, secret)}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${TTL_MS / 1000}`);
-  redirect(res, '/admin/');
+  redirect(res, '/admin');
 }
