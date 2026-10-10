@@ -14,6 +14,28 @@ const list = (value: unknown): Json[] => (Array.isArray(value) ? value : []);
 let uidSeq = 0;
 export const newUid = () => `u${(++uidSeq).toString(36)}`;
 
+/* ---------- Codice prodotto ---------- */
+
+// Ogni prodotto ha un codice fisso salvato nel JSON: identifica il prodotto nei link (?p=nome-codice) e nella
+// selezione del cliente, quindi rinominarlo non rompe nulla. Chi non lo ha ancora riceve un codice derivato
+// dal nome, uguale a ogni caricamento; l'admin lo scrive nel JSON al primo salvataggio del suo file
+// (prima di un'eventuale rinomina, perche' il codice e' calcolato al caricamento).
+const hash36 = (text: string) => {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+};
+
+/** Codice non presente in `taken` (che viene aggiornato): derivato da `seed`, casuale se manca. */
+export function productId(taken: Set<string>, seed = Math.random().toString(36)): string {
+  let id = hash36(seed);
+  for (let n = 2; taken.has(id); n++) id = hash36(`${seed}#${n}`);
+  taken.add(id);
+  return id;
+}
+
+const VALID_ID = /^[a-z0-9]+$/;
+
 /* ---------- Normalizzazione ---------- */
 
 export function normalizeProduct(raw: Json, categoryId?: string): Product {
@@ -21,6 +43,7 @@ export function normalizeProduct(raw: Json, categoryId?: string): Product {
   return {
     ...rest,
     uid: newUid(),
+    id: str(rest.id),
     categoryId: categoryId ?? (str(rest.categoryId) || str(subcategoryId)),
     brand: str(rest.brand),
     name: str(rest.name),
@@ -56,10 +79,14 @@ function normalizeMacro(entry: Json, file?: Json): Macro {
 
 /** Da config.json (+ file categoria) oppure dalla risposta di /api/catalog (dati già incorporati). */
 export function buildCatalog(config: Json, files?: Json[]): Catalog {
-  return {
-    title: str(config?.title),
-    macros: list(config?.macroCategories).map((m, i) => normalizeMacro(m, files?.[i])),
-  };
+  const macros = list(config?.macroCategories).map((m, i) => normalizeMacro(m, files?.[i]));
+  // codici salvati invariati; mancanti, non validi o doppi -> derivati dal nome
+  const taken = new Set<string>();
+  for (const p of macros.flatMap((m) => m.products)) {
+    if (VALID_ID.test(p.id) && !taken.has(p.id)) taken.add(p.id);
+    else p.id = productId(taken, `${p.brand} ${p.name}`);
+  }
+  return { title: str(config?.title), tagline: str(config?.tagline), whatsapp: str(config?.whatsapp), macros };
 }
 
 /* ---------- Caricamento ---------- */
@@ -105,7 +132,9 @@ export function serializeCatalog(catalog: Catalog): Map<string, string> {
       products: m.products.map(({ uid: _uid, ...p }) => p),
     }, null, 2));
   }
-  files.set(CONFIG_FILE, JSON.stringify({ title: catalog.title, macroCategories }, null, 2));
+  // tagline e whatsapp solo se impostati: un config senza di essi resta identico
+  const { title, tagline, whatsapp } = catalog;
+  files.set(CONFIG_FILE, JSON.stringify({ title, ...(tagline && { tagline }), ...(whatsapp && { whatsapp }), macroCategories }, null, 2));
   return files;
 }
 
@@ -148,8 +177,11 @@ export interface CatalogIndex {
   macroBySlug: Map<string, Macro>;
   subSlug: Map<string, string>;
   subBySlug: Map<string, Map<string, Sub>>;
+  /** uid -> parametro ?p= ("nome-codice"). */
   productSlug: Map<string, string>;
-  productBySlug: Map<string, ProductRef>;
+  byId: Map<string, ProductRef>;
+  /** Link condivisi prima dei codici prodotto ("brand-nome"). */
+  byLegacySlug: Map<string, ProductRef>;
   byUid: Map<string, ProductRef>;
   entries: SearchEntry[];
 }
@@ -162,10 +194,10 @@ export function indexCatalog(catalog: Catalog): CatalogIndex {
 
   const index: CatalogIndex = {
     macroSlug: new Map(), macroBySlug: new Map(), subSlug: new Map(), subBySlug: new Map(),
-    productSlug: new Map(), productBySlug: new Map(), byUid: new Map(), entries: [],
+    productSlug: new Map(), byId: new Map(), byLegacySlug: new Map(), byUid: new Map(), entries: [],
   };
   const macroSlugs = new Set<string>();
-  const productSlugs = new Set<string>();
+  const legacySlugs = new Set<string>();
 
   for (const macro of catalog.macros) {
     const mSlug = uniqueSlug(slugify(macro.name), macroSlugs);
@@ -184,9 +216,9 @@ export function indexCatalog(catalog: Catalog): CatalogIndex {
     for (const product of macro.products) {
       const sub = macro.subcategories.find((s) => s.id === product.categoryId);
       const ref: ProductRef = { macro, product, sub };
-      const pSlug = uniqueSlug(slugify(`${product.brand} ${product.name}`), productSlugs);
-      index.productSlug.set(product.uid, pSlug);
-      index.productBySlug.set(pSlug, ref);
+      index.productSlug.set(product.uid, `${slugify(product.name)}-${product.id}`);
+      index.byId.set(product.id, ref);
+      index.byLegacySlug.set(uniqueSlug(slugify(`${product.brand} ${product.name}`), legacySlugs), ref);
       index.byUid.set(product.uid, ref);
       index.entries.push({
         ...ref,
@@ -198,6 +230,14 @@ export function indexCatalog(catalog: Catalog): CatalogIndex {
 
   indexCache.set(catalog, index);
   return index;
+}
+
+/**
+ * Prodotto da ?p= o da una chiave della selezione: conta il codice dopo l'ultimo "-" (il nome puo' cambiare);
+ * in mancanza, vecchi link "brand-nome".
+ */
+export function productFromParam(index: CatalogIndex, param: string): ProductRef | undefined {
+  return index.byId.get(param.slice(param.lastIndexOf('-') + 1)) ?? index.byLegacySlug.get(param);
 }
 
 export interface SearchGroup {
@@ -235,4 +275,27 @@ export function isBlankHtml(html: string): boolean {
 export function splitTitle(title: string): [string, string] {
   const i = title.indexOf(' ');
   return i > 0 ? [title.slice(0, i), title.slice(i + 1)] : [title, title];
+}
+
+/* ---------- Dati chiave della scheda tecnica ---------- */
+
+// In ordine di importanza; le voci sono testo libero, quindi si riconoscono dal nome.
+const FACT_PATTERNS = [
+  /gradazione|alcol/i,
+  /formato|capacit|contenuto|peso|grammatura/i,
+  /uvaggio|vitign|\buve\b|ingrediente/i,
+  /denominazione|tipologia/i,
+  /zona|origine|provenienza|regione/i,
+  /annata|invecchiamento|affinamento|stagionatura/i,
+];
+
+/** Fino a 4 voci della scheda tecnica da mettere in evidenza in cima alla scheda prodotto. */
+export function keyFacts(tech: TechRow[], max = 4): TechRow[] {
+  const facts: TechRow[] = [];
+  for (const pattern of FACT_PATTERNS) {
+    const row = tech.find((r) => pattern.test(r.k) && r.v.trim() && !facts.includes(r));
+    if (row) facts.push(row);
+    if (facts.length === max) break;
+  }
+  return facts;
 }

@@ -1,6 +1,8 @@
 .token-gitlab
+token-gitlab
 .env
 .env.local
-
-.env.production
 node_modules
+dist
+.vite
+.vercel

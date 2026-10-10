@@ -1,67 +1,48 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import {
-  faArrowDown, faArrowRight, faArrowRightArrowLeft, faArrowUp, faCamera, faCheck, faCopy, faGripVertical, faPaste, faPlus,
-  faRightLeft, faTruckFast, faXmark,
+  faArrowDown, faArrowRightArrowLeft, faArrowUp, faCamera, faCheck, faCopy, faGripVertical, faPaste, faPlus,
+  faRightLeft, faTag, faTruckFast, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Product, Sub } from '../types';
 import { useAdmin } from '../lib/admin';
-import { packOffers, priceInfo } from '../lib/pricing';
+import { cx, scrollToSection } from '../lib/hooks';
+import { addToSelection, selectionStore } from '../lib/personal';
+import { formatPrice, packOffers, priceInfo, type PackOffer } from '../lib/pricing';
 import { useNav } from '../lib/router';
 import { useSortable } from '../lib/sortable';
-import { catalogStore } from '../lib/store';
+import { catalogStore, sectionStore, useStore } from '../lib/store';
+import { toast } from '../lib/toast';
 import { Editable } from './Editable';
 import { Icon } from './Icon';
 import { AdminIconButton, LinkBox, Media } from './ui';
-
-/* ---------- Home: griglia delle macro categorie ---------- */
-
-export function CategoryHome({ macros }: { macros: Macro[] }) {
-  const nav = useNav();
-  const admin = useAdmin();
-  return (
-    <div className="cat-home">
-      <div className="cat-home-grid">
-        {macros.map((m, i) => (
-          <LinkBox key={m.id} className="cat-home-card" href={nav.href({ macroId: m.id })} onOpen={() => nav.selectMacro(m.id)}
-            asDiv={!!admin} label={m.name}>
-            {m.bgImage
-              ? <img className="cat-home-card-bg" src={m.bgImage} alt="" loading={i < 2 ? 'eager' : 'lazy'} decoding="async"
-                  fetchPriority={i < 2 ? 'high' : 'auto'} />
-              : <><div className="cat-home-no-img"><Icon icon={faImage} /></div><div className="cat-home-card-bg" /></>}
-            <div className="cat-home-card-overlay" />
-            <div className="cat-home-card-body">
-              <div className="cat-home-card-name">{m.name}</div>
-              <div className="cat-home-card-meta">Esplora</div>
-            </div>
-            <div className="cat-home-card-arrow"><Icon icon={faArrowRight} /></div>
-            {admin && (
-              <AdminIconButton className="cat-home-bg-btn" icon={faCamera} title="Cambia immagine di sfondo"
-                onClick={() => admin.pickMacroImage(m.id, 'bgImage')} />
-            )}
-          </LinkBox>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /* ---------- Hero di categoria ---------- */
 
 export function Hero({ macro }: { macro: Macro }) {
   const admin = useAdmin();
   const edit = (field: 'heroTag' | 'heroTitle' | 'heroDesc') =>
-    admin ? (value: string) => admin.setMacro(macro.id, { [field]: value.trim() }) : undefined;
+    admin ? (value: string) => admin.setMacro(macro.id, { [field]: value }) : undefined;
+  // in admin il campo vuoto mostra il testo di riserva come segnaposto (senza riscriverlo mentre si digita)
+  const shown = (value: string, fallback: string) => (admin ? value : value || fallback);
   return (
     <div className="hero">
       {macro.heroImage && <img className="hero-img" src={macro.heroImage} alt="" decoding="async" fetchPriority="high" />}
       <div className="hero-overlay" />
       <div className="hero-content">
-        <Editable className="hero-tag" value={macro.heroTag || macro.name.toUpperCase()} onChange={edit('heroTag')} singleLine />
-        <Editable className="hero-title" role="heading" aria-level={1} value={macro.heroTitle || macro.name}
+        <Editable className="hero-tag editable-placeholder" value={shown(macro.heroTag, macro.name.toUpperCase())}
+          placeholder={macro.name.toUpperCase()} onChange={edit('heroTag')} singleLine />
+        <Editable className="hero-title editable-placeholder" role="heading" aria-level={1} value={shown(macro.heroTitle, macro.name)}
+          placeholder={macro.name}
           onChange={edit('heroTitle')} singleLine />
         {(macro.heroDesc || admin) && (
           <Editable as="p" className="hero-desc" value={macro.heroDesc} onChange={edit('heroDesc')} placeholder="Descrizione" />
+        )}
+        {macro.products.length > 0 && (
+          <div className="hero-meta">
+            <span>{macro.products.length} prodotti</span>
+            {macro.subcategories.length > 1 && <span>{macro.subcategories.length} selezioni</span>}
+          </div>
         )}
         {admin && (
           <button type="button" className="admin-pill" onClick={() => admin.pickMacroImage(macro.id, 'heroImage')}
@@ -89,17 +70,153 @@ export function ShippingBanner() {
   );
 }
 
+/* ---------- Pagina categoria: tutte le sottocategorie in un unico scorrimento ---------- */
+
+type Sort = '' | 'price-asc' | 'price-desc' | 'name';
+interface Filters { offers: boolean; brand: string; sort: Sort }
+const NO_FILTERS: Filters = { offers: false, brand: '', sort: '' };
+
+const hasOffer = (p: Product) => priceInfo(p).discount > 0 || packOffers(p).length > 0;
+const unitPrice = (p: Product) => priceInfo(p).final ?? Number.POSITIVE_INFINITY;
+
+function applyFilters(products: Product[], f: Filters): Product[] {
+  const list = products.filter((p) => (!f.offers || hasOffer(p)) && (!f.brand || p.brand.trim() === f.brand));
+  if (f.sort === 'price-asc') list.sort((a, b) => unitPrice(a) - unitPrice(b));
+  else if (f.sort === 'price-desc') list.sort((a, b) => unitPrice(b) - unitPrice(a));
+  else if (f.sort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'it'));
+  return list;
+}
+
+export function CategoryPage({ macro, initialSubId }: { macro: Macro; initialSubId: string | null }) {
+  const admin = useAdmin();
+  const nav = useNav();
+  const [filters, setFilters] = useState(NO_FILTERS);
+  // in admin si lavora sempre sull'ordine reale, senza filtri
+  const active = admin ? NO_FILTERS : filters;
+  const filtering = active.offers || !!active.brand;
+  const groups = useMemo(() => macro.subcategories
+    .map((sub) => ({ sub, products: applyFilters(macro.products.filter((p) => p.categoryId === sub.id), active) }))
+    // nel sito pubblico le sottocategorie vuote non compaiono
+    .filter((g) => admin || g.products.length > 0), [macro, active, admin]);
+  const total = groups.reduce((n, g) => n + g.products.length, 0);
+  const ids = groups.map((g) => g.sub.id);
+  const idsKey = ids.join('|');
+
+  // all'apertura: in cima, oppure direttamente alla sottocategoria richiesta (link condiviso)
+  useLayoutEffect(() => {
+    if (initialSubId && initialSubId !== macro.subcategories[0]?.id) scrollToSection(initialSubId, false);
+    else window.scrollTo(0, 0);
+  }, []);
+
+  // scroll-spy: evidenzia nei chip la sottocategoria in vista e la riporta nell'URL
+  useEffect(() => {
+    sectionStore.set({ active: null, visible: admin ? null : ids });
+    let frame = 0;
+    let urlTimer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      frame = 0;
+      const offset = (document.querySelector<HTMLElement>('.top-bar')?.offsetHeight ?? 0) + 40;
+      const atBottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4;
+      let current = ids[0] ?? null;
+      for (const id of ids) {
+        const el = document.getElementById(`section-${id}`);
+        if (el && el.getBoundingClientRect().top <= offset) current = id;
+      }
+      if (atBottom && window.scrollY > 0) current = ids[ids.length - 1] ?? current;
+      if (sectionStore.get().active === current) return;
+      sectionStore.set((s) => ({ ...s, active: current }));
+      clearTimeout(urlTimer);
+      if (current) urlTimer = setTimeout(() => nav.markSub(current), 600);
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+      clearTimeout(urlTimer);
+    };
+  }, [idsKey, admin, nav]);
+
+  useEffect(() => () => sectionStore.set({ active: null, visible: null }), []);
+
+  return (
+    <>
+      <Hero macro={macro} />
+      <ShippingBanner />
+      <main className="container category-main">
+        {!admin && macro.products.length > 0 && (
+          <CatalogToolbar macro={macro} filters={filters} total={total} onChange={setFilters} />
+        )}
+        {groups.map(({ sub, products }) => <Section key={sub.id} macro={macro} sub={sub} products={products} />)}
+        {!groups.length && (
+          <div className="category-empty">
+            <div className="category-empty-title">{filtering ? 'Nessun prodotto con questi filtri' : 'Nessun prodotto ancora disponibile'}</div>
+            <div className="category-empty-text">
+              {filtering
+                ? <button type="button" className="hero-cta" onClick={() => setFilters(NO_FILTERS)}>Mostra tutti i prodotti</button>
+                : `La categoria "${macro.name}" non contiene ancora prodotti.`}
+            </div>
+          </div>
+        )}
+      </main>
+    </>
+  );
+}
+
+function CatalogToolbar({ macro, filters, total, onChange }: {
+  macro: Macro; filters: Filters; total: number; onChange: (f: Filters) => void;
+}) {
+  const brands = useMemo(
+    () => [...new Set(macro.products.map((p) => p.brand.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'it')),
+    [macro.products],
+  );
+  // il filtro serve solo se separa qualcosa: nascosto se nessuno o tutti i prodotti sono in offerta
+  const offers = useMemo(() => macro.products.some(hasOffer) && !macro.products.every(hasOffer), [macro.products]);
+  const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
+  return (
+    <div className="catalog-toolbar" role="search" aria-label="Filtra e ordina">
+      <div className="toolbar-count" aria-live="polite"><strong>{total}</strong> {total === 1 ? 'prodotto' : 'prodotti'}</div>
+      <div className="toolbar-controls">
+        {offers && (
+          <button type="button" className={cx('toolbar-chip', filters.offers && 'active')} aria-pressed={filters.offers}
+            onClick={() => set({ offers: !filters.offers })}>
+            <Icon icon={faTag} /> Offerte
+          </button>
+        )}
+        {brands.length >= 3 && (
+          <label className="toolbar-select">
+            <span className="sr-only">Produttore</span>
+            <select value={filters.brand} onChange={(e) => set({ brand: e.target.value })}>
+              <option value="">Tutti i produttori</option>
+              {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </label>
+        )}
+        <label className="toolbar-select">
+          <span className="sr-only">Ordina</span>
+          <select value={filters.sort} onChange={(e) => set({ sort: e.target.value as Sort })}>
+            <option value="">Ordine consigliato</option>
+            <option value="price-asc">Prezzo crescente</option>
+            <option value="price-desc">Prezzo decrescente</option>
+            <option value="name">Nome A–Z</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Sottocategoria con griglia prodotti ---------- */
 
-export function Section({ macro, sub }: { macro: Macro; sub: Sub }) {
+export function Section({ macro, sub, products }: { macro: Macro; sub: Sub; products: Product[] }) {
   const nav = useNav();
   const admin = useAdmin();
   const gridRef = useRef<HTMLDivElement>(null);
-  const products = useMemo(() => macro.products.filter((p) => p.categoryId === sub.id), [macro.products, sub.id]);
 
   useSortable(gridRef, {
     enabled: !!admin,
-    item: '.card',
+    item: '.pcard',
     handle: '.card-drag',
     onMove: (from, to) => admin?.reorderProduct(products[from].uid, products[to].uid),
   });
@@ -109,12 +226,12 @@ export function Section({ macro, sub }: { macro: Macro; sub: Sub }) {
   };
 
   return (
-    <section className="section-pane" aria-labelledby={`sec-${sub.id}`}>
+    <section className="section-pane" id={`section-${sub.id}`} aria-labelledby={`sec-${sub.id}`}>
       <div className="section-header">
         <div className="section-heading">
           <div className="sec-kicker">Sottocategoria</div>
           <div className="sec-title" id={`sec-${sub.id}`} role="heading" aria-level={2}>{sub.name}</div>
-          <div className="sec-subtitle">Selezione attuale del catalogo</div>
+          <div className="sec-subtitle">{products.length === 1 ? '1 prodotto' : `${products.length} prodotti`}</div>
         </div>
         {admin && (
           <div className="section-admin-tools">
@@ -160,31 +277,78 @@ export function Section({ macro, sub }: { macro: Macro; sub: Sub }) {
 
 /* ---------- Card prodotto ---------- */
 
-export const ProductCard = memo(function ProductCard({ product, eager }: { product: Product; eager: boolean }) {
+/**
+ * Card prodotto. `compact` e' la versione per le righe scorrevoli (home, correlati).
+ * Sito pubblico: tutta la card e' un link (link "esteso" sotto il contenuto) e il "+" aggiunge
+ * alla selezione senza aprire la scheda. Admin: niente "+", ma i comandi di modifica.
+ */
+export const ProductCard = memo(function ProductCard({ product, eager = false, compact = false }: {
+  product: Product; eager?: boolean; compact?: boolean;
+}) {
   const nav = useNav();
   const admin = useAdmin();
+  const editing = !!admin && !compact;
   const price = priceInfo(product);
+  // offerta pack piu' conveniente al pezzo, mostrata sotto il prezzo
+  const bestPack = packOffers(product).reduce<PackOffer | null>(
+    (best, o) => (o.perUnit !== null && (!best || o.perUnit < best.perUnit!) ? o : best), null);
   const label = [product.brand, product.name, price.label].filter(Boolean).join(' – ');
-  return (
-    <LinkBox className="card visible" href={nav.productHref(product.uid)} onOpen={() => nav.openProduct(product.uid)}
-      asDiv={!!admin} label={label}>
-      <Media className="card-media" imgClassName="card-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
+  const open = () => nav.openProduct(product.uid);
+
+  const body = (
+    <>
+      <Media className="pcard-media" imgClassName="pcard-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
         variant="card" eager={eager} alt={product.name}
-        placeholder={<div className="card-no-img" style={{ display: 'flex' }}><Icon icon={faImage} style={{ fontSize: '2rem', color: '#ddd' }} /></div>} />
-      <OfferBadges product={product} className="card-badges" />
-      <div className="card-info">
-        <div className="card-brand">{product.brand}</div>
-        <div className="card-name">{product.name}</div>
-        {product.infoLine && <div className="card-subtitle">{product.infoLine}</div>}
-        <div className="card-price">
-          {price.discount > 0 && <s className="price-old">{product.price}</s>}
-          {price.label}
+        placeholder={<div className="pcard-noimg"><Icon icon={faImage} /></div>} />
+      {price.discount > 0 && <span className="pcard-sale sale-badge">-{price.discount}%</span>}
+      <div className="pcard-info">
+        <div className="pcard-brand">{product.brand}</div>
+        <div className="pcard-name">{product.name}</div>
+        {!compact && product.infoLine && <div className="pcard-sub">{product.infoLine}</div>}
+        <div className="pcard-foot">
+          <div className="pcard-price">
+            <strong>{price.label}</strong>
+            {price.discount > 0 && <s>{product.price}</s>}
+            {bestPack && <small>Pack {bestPack.qty} · {formatPrice(bestPack.perUnit!, product.price)} cad.</small>}
+          </div>
         </div>
       </div>
-      {admin && <CardAdminTools uid={product.uid} />}
-    </LinkBox>
+    </>
+  );
+
+  if (editing) {
+    return (
+      <LinkBox className="pcard" href={nav.productHref(product.uid)} onOpen={open} asDiv label={label}>
+        {body}
+        <CardAdminTools uid={product.uid} />
+      </LinkBox>
+    );
+  }
+  return (
+    <article className={cx('pcard', compact && 'is-compact')}>
+      <a className="pcard-link" href={nav.productHref(product.uid)} aria-label={label}
+        onClick={(e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); open(); } }} />
+      {body}
+      <QuickAdd product={product} />
+    </article>
   );
 });
+
+/** "+" sulla card: aggiunge un pezzo alla selezione; se il prodotto c'e' gia' mostra quanti pezzi. */
+export function QuickAdd({ product }: { product: Product }) {
+  const qty = useStore(selectionStore)[product.id] ?? 0;
+  return (
+    <button type="button" className={cx('pcard-add', qty > 0 && 'in')}
+      aria-label={qty ? `Aggiungi un altro pezzo (nella selezione: ${qty})` : 'Aggiungi alla selezione'}
+      title={qty ? `Nella selezione: ${qty} pz` : 'Aggiungi alla selezione'}
+      onClick={() => {
+        addToSelection(product.id, 1);
+        toast(`Aggiunto alla selezione: ${product.name || 'prodotto'}`);
+      }}>
+      {qty > 0 ? <span className="pcard-add-count">{qty > 99 ? '99+' : qty}</span> : <Icon icon={faPlus} />}
+    </button>
+  );
+}
 
 /** Badge "-20%" (prodotto scontato) e "PACK" (offerte multiple, con lo sconto massimo). */
 export function OfferBadges({ product, className }: { product: Product; className: string }) {

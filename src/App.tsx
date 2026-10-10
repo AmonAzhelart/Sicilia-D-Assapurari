@@ -1,13 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Catalog } from './types';
 import { indexCatalog } from './lib/catalog';
-import { usePerfLite } from './lib/hooks';
+import { useAdmin } from './lib/admin';
+import { scrollToSection, usePerfLite } from './lib/hooks';
 import { HOME, NavContext, useRouter, viewToUrl, type Nav, type View } from './lib/router';
 import { catalogStore, useStore } from './lib/store';
-import { CategoryHome, Hero, Section, ShippingBanner } from './components/Catalog';
+import { CategoryPage } from './components/Catalog';
 import { Header } from './components/Header';
+import { Footer, HomePage } from './components/Home';
 import { ProductSheet } from './components/ProductSheet';
 import { SearchOverlay } from './components/SearchOverlay';
+import { SelectionBar, SelectionDrawer } from './components/Selection';
 import { Loader, Toasts } from './components/ui';
 
 interface AppProps {
@@ -19,9 +22,10 @@ interface AppProps {
 
 export function App({ load, base, dirty }: AppProps) {
   const catalog = useStore(catalogStore);
+  const admin = useAdmin();
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const lite = usePerfLite();
+  usePerfLite();
 
   useEffect(() => {
     let live = true;
@@ -46,41 +50,38 @@ export function App({ load, base, dirty }: AppProps) {
     const closeTo = (next: View) => (history.state?.inApp ? history.back() : navigate(next, true));
     const productView = (uid: string): View | null => {
       const ref = indexCatalog(data()).byUid.get(uid);
-      return ref ? { macroId: ref.macro.id, subId: ref.product.categoryId || null, productUid: uid, search: null } : null;
+      return ref ? { ...HOME, macroId: ref.macro.id, subId: ref.product.categoryId || null, productUid: uid } : null;
     };
     return {
       goHome: () => navigate(HOME),
       selectMacro: (id) => navigate({ ...HOME, macroId: id }),
-      selectSub: (id) => navigate({ ...current(), subId: id, productUid: null, search: null }, true),
+      selectSub: (id) => {
+        navigate({ ...current(), subId: id, productUid: null, search: null, selection: false }, true);
+        scrollToSection(id);
+      },
+      markSub: (id) => history.replaceState(history.state, '', viewToUrl({ ...current(), subId: id }, data(), base)),
       openProduct: (uid) => {
         const next = productView(uid);
         if (next) navigate(next);
       },
       closeProduct: () => closeTo({ ...current(), productUid: null }),
-      openSearch: () => navigate({ ...current(), productUid: null, search: current().search ?? '' }),
+      openSearch: () => navigate({ ...current(), productUid: null, selection: false, search: current().search ?? '' }),
       setSearch: (query) => navigate({ ...current(), search: query }, true),
       closeSearch: () => closeTo({ ...current(), search: null }),
+      openSelection: () => navigate({ ...current(), productUid: null, search: null, selection: true }),
+      closeSelection: () => closeTo({ ...current(), selection: false }),
       href: (partial) => viewToUrl({ ...HOME, ...partial }, data(), base),
       productHref: (uid) => viewToUrl(productView(uid) ?? HOME, data(), base),
     };
   }, [navigate, base]);
 
   const macro = catalog?.macros.find((m) => m.id === view.macroId);
-  const sub = macro?.subcategories.find((s) => s.id === view.subId) ?? macro?.subcategories[0];
   const entry = catalog && view.productUid ? indexCatalog(catalog).byUid.get(view.productUid) : undefined;
 
-  // cambio categoria: si riparte dall'alto; cambio sottocategoria: si torna all'inizio della griglia
-  const sectionRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [macro?.id]);
-  useLayoutEffect(() => {
-    const el = sectionRef.current;
-    if (!el) return;
-    const header = document.querySelector('.top-bar')?.getBoundingClientRect().height ?? 0;
-    const top = el.getBoundingClientRect().top + window.scrollY - header - 12;
-    if (window.scrollY > top) window.scrollTo({ top, behavior: lite ? 'auto' : 'smooth' });
-  }, [sub?.id]);
+  // la home riparte sempre dall'alto (la pagina categoria gestisce da se' il proprio scorrimento)
+  useEffect(() => {
+    if (catalog && !macro) window.scrollTo(0, 0);
+  }, [!!catalog, macro?.id]);
 
   useEffect(() => {
     const title = catalog?.title || "SICILIA D'ASSAPURARI";
@@ -92,28 +93,15 @@ export function App({ load, base, dirty }: AppProps) {
       <Loader ready={!!catalog} error={error} onRetry={() => setAttempt((n) => n + 1)} />
       {catalog && (
         <>
-          <Header catalog={catalog} macro={macro} subId={sub?.id} dirty={dirty} />
-          {macro ? (
-            <>
-              <Hero key={macro.id} macro={macro} />
-              <ShippingBanner />
-              <main className="container" ref={sectionRef}>
-                {sub ? <Section key={sub.id} macro={macro} sub={sub} /> : (
-                  <div className="category-empty">
-                    <div className="category-empty-title">Nessuna sottocategoria</div>
-                    <div className="category-empty-text">La categoria "{macro.name}" non contiene ancora prodotti.</div>
-                  </div>
-                )}
-              </main>
-            </>
-          ) : (
-            <main>
-              <ShippingBanner />
-              <CategoryHome macros={catalog.macros} />
-            </main>
-          )}
+          <Header catalog={catalog} macro={macro} subId={view.subId ?? macro?.subcategories[0]?.id} dirty={dirty} />
+          {macro
+            ? <CategoryPage key={macro.id} macro={macro} initialSubId={view.subId} />
+            : <HomePage catalog={catalog} />}
+          <Footer catalog={catalog} />
           <ProductSheet entry={entry} />
           {view.search !== null && <SearchOverlay catalog={catalog} initialQuery={view.search} />}
+          {!admin && view.selection && <SelectionDrawer catalog={catalog} />}
+          {!admin && !entry && view.search === null && !view.selection && <SelectionBar catalog={catalog} />}
         </>
       )}
       <Toasts />

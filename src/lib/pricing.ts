@@ -75,3 +75,48 @@ export function packOffers(product: Product): PackOffer[] {
     .filter((offer) => offer.qty >= 2)
     .sort((a, b) => a.qty - b.qty);
 }
+
+export interface LineQuote {
+  qty: number;
+  /** Totale senza sconti (prezzo pieno x quantita'). */
+  list: number | null;
+  /** Totale da pagare, con sconto prodotto e miglior combinazione di pack. */
+  total: number | null;
+  /** Pack applicati, dal piu' grande. */
+  packs: Array<{ qty: number; discount: number; count: number }>;
+}
+
+/**
+ * Prezzo di una quantita': sceglie la combinazione di pack piu' conveniente
+ * (programmazione dinamica: es. 12 pezzi con pack da 6 e da 10 -> 6+6, non 10+2).
+ */
+export function lineQuote(product: Product, qty: number): LineQuote {
+  const { base, final } = priceInfo(product);
+  if (base === null || final === null || qty < 1) return { qty, list: null, total: null, packs: [] };
+  const offers = packOffers(product).filter((o) => o.total !== null && o.qty <= qty);
+  const cents = (n: number) => Math.round(n * 100);
+  const best = new Array<number>(qty + 1).fill(0);
+  const pick = new Array<number>(qty + 1).fill(-1);
+  for (let n = 1; n <= qty; n++) {
+    best[n] = best[n - 1] + cents(final);
+    offers.forEach((o, i) => {
+      if (o.qty > n) return;
+      const cost = best[n - o.qty] + cents(o.total!);
+      if (cost < best[n]) {
+        best[n] = cost;
+        pick[n] = i;
+      }
+    });
+  }
+  const counts = new Map<number, number>();
+  for (let n = qty; n > 0;) {
+    if (pick[n] < 0) n -= 1;
+    else {
+      counts.set(pick[n], (counts.get(pick[n]) ?? 0) + 1);
+      n -= offers[pick[n]].qty;
+    }
+  }
+  const packs = [...counts].map(([i, count]) => ({ qty: offers[i].qty, discount: offers[i].discount, count }))
+    .sort((a, b) => b.qty - a.qty);
+  return { qty, list: round2(base * qty), total: best[qty] / 100, packs };
+}

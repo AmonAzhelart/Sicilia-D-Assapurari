@@ -1,35 +1,12 @@
 import { faPlus, faXmark } from '@fortawesome/free-solid-svg-icons';
 import type { Pack, Product } from '../types';
 import { useAdmin } from '../lib/admin';
-import { formatPrice, packOffer, packOffers, priceInfo, type PackOffer } from '../lib/pricing';
+import { formatPrice, packOffer, priceInfo, type PackOffer } from '../lib/pricing';
 import { Icon } from './Icon';
 import { AdminIconButton } from './ui';
 
-/** Riquadro offerte nella scheda: elenco pack per il cliente, editor sconto + pack in admin. */
-export function Offers({ product }: { product: Product }) {
-  return useAdmin() ? <OffersEditor product={product} /> : <PackList product={product} />;
-}
-
-function PackList({ product }: { product: Product }) {
-  const offers = packOffers(product);
-  if (!offers.length) return null;
-  return (
-    <section className="pack-offers" aria-label="Offerte pack">
-      <h4 className="sheet-section-title">Offerte pack</h4>
-      <div className="pack-list">
-        {offers.map((offer, i) => (
-          <div key={i} className="pack-item">
-            <div className="pack-qty"><strong>{offer.qty}</strong><span>pezzi</span></div>
-            <PackPrices offer={offer} like={product.price} />
-            {offer.discount > 0 && <span className="sale-badge">-{offer.discount}%</span>}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function PackPrices({ offer, like }: { offer: PackOffer; like: string }) {
+/** Prezzi di un pack: somma barrata, totale e prezzo al pezzo. */
+export function PackPrices({ offer, like }: { offer: PackOffer; like: string }) {
   if (offer.total === null || offer.full === null || offer.perUnit === null) {
     return <div className="pack-prices"><strong>Pack da {offer.qty}</strong></div>;
   }
@@ -45,7 +22,8 @@ function PackPrices({ offer, like }: { offer: PackOffer; like: string }) {
 const toInt = (value: string, max: number) =>
   value.trim() === '' ? 0 : Math.min(max, Math.max(0, Math.round(Number(value)) || 0));
 
-function OffersEditor({ product }: { product: Product }) {
+/** Editor admin: sconto prodotto e offerte pack. */
+export function OffersEditor({ product }: { product: Product }) {
   const admin = useAdmin()!;
   const price = priceInfo(product);
   const packs: Pack[] = Array.isArray(product.packs) ? product.packs : [];

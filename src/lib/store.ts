@@ -27,5 +27,8 @@ export function createStore<T>(initial: T): Store<T> {
 
 export const useStore = <T,>(store: Store<T>): T => useSyncExternalStore(store.subscribe, store.get, store.get);
 
+/** Pagina categoria: sottocategoria in vista durante lo scorrimento e sottocategorie con prodotti dopo i filtri. */
+export const sectionStore = createStore<{ active: string | null; visible: string[] | null }>({ active: null, visible: null });
+
 /** Stato unico del catalogo, condiviso tra app pubblica e admin. */
 export const catalogStore = createStore<Catalog | null>(null);

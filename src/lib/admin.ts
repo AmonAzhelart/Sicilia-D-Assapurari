@@ -1,10 +1,12 @@
 // Contratto tra i componenti condivisi e l'admin. Nel sito pubblico il contesto e' null,
 // quindi i controlli di modifica non vengono renderizzati e il loro codice non viene caricato.
 import { createContext, useContext } from 'react';
-import type { Macro, Product } from '../types';
+import type { Catalog, Macro, Product } from '../types';
 
 export interface AdminApi {
-  editTitle(): void;
+  /** Impostazioni generali: nome del catalogo e numero WhatsApp per le richieste. */
+  editSettings(): void;
+  setMeta(patch: Partial<Pick<Catalog, 'title' | 'tagline' | 'whatsapp'>>): void;
   toggleMenu(): void;
 
   addMacro(): Promise<string | null>;

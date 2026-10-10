@@ -1,32 +1,33 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+// Scheda prodotto. Desktop: foto a sinistra, informazioni a destra. Mobile: foto in alto e contenuti sotto.
+// Ordine delle informazioni: identita' e prezzo, dati chiave, confezione, sezioni richiudibili, correlati;
+// il pulsante "Aggiungi" resta sempre visibile in basso.
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import {
-  faBoxArchive, faChevronLeft, faChevronRight, faClipboardList, faCopy, faExpand, faFileLines, faPaste, faPlus,
-  faShareNodes, faTrash, faTruckFast, faUtensils, faXmark, faGripVertical, faEraser,
+  faArrowRight, faBagShopping, faBoxArchive, faChevronDown, faChevronLeft, faChevronRight, faCopy, faEraser, faExpand,
+  faGripVertical, faMagnifyingGlassPlus, faPaste, faPlus, faShareNodes, faTrash, faTruckFast, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type { Product } from '../types';
-import { isBlankHtml, type ProductRef } from '../lib/catalog';
+import { indexCatalog, isBlankHtml, keyFacts, type ProductRef } from '../lib/catalog';
 import { useAdmin } from '../lib/admin';
 import { cx, useEscape, useScrollLock } from '../lib/hooks';
-import { priceInfo } from '../lib/pricing';
+import { addToSelection, markViewed, selectionStore } from '../lib/personal';
+import { formatPrice, lineQuote, packOffers, priceInfo } from '../lib/pricing';
 import { useNav } from '../lib/router';
 import { moveItem, useSortable } from '../lib/sortable';
+import { catalogStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
+import { OfferBadges, QuickAdd } from './Catalog';
 import { Editable, RichText } from './Editable';
 import { Icon } from './Icon';
 import { ImageViewer } from './ImageViewer';
-import { Offers } from './Offers';
-import { AdminIconButton, Media } from './ui';
-
-type Tab = 'tech' | 'desc' | 'pair';
-const TABS: Array<{ id: Tab; title: string; label: string; icon: typeof faClipboardList }> = [
-  { id: 'tech', title: 'Scheda Tecnica', label: 'Tecnica', icon: faClipboardList },
-  { id: 'desc', title: 'Descrizione', label: 'Info', icon: faFileLines },
-  { id: 'pair', title: 'Abbinamenti', label: 'Abbina', icon: faUtensils },
-];
+import { OffersEditor } from './Offers';
+import { packNote, Stepper } from './Selection';
+import { AdminIconButton, LinkBox, Media } from './ui';
 
 export function ProductSheet({ entry }: { entry?: ProductRef }) {
   const nav = useNav();
+  const admin = useAdmin();
   const open = !!entry;
   // durante l'animazione di chiusura resta visibile l'ultimo prodotto
   const [shown, setShown] = useState(entry);
@@ -49,15 +50,19 @@ export function ProductSheet({ entry }: { entry?: ProductRef }) {
     if (!open) setViewer(null);
   }, [open]);
 
+  // "visti di recente" (solo per i clienti)
+  const viewedId = entry?.product.id;
+  useEffect(() => {
+    if (viewedId && !admin) markViewed(viewedId);
+  }, [viewedId, admin]);
+
   const product = shown?.product;
   return (
     <>
       <div className={cx('sheet-overlay', open && 'open')} onClick={nav.closeProduct}>
-        <div ref={sheetRef} className={cx('sheet', open && 'open')} role="dialog" aria-modal="true" aria-label={product?.name}
+        <div ref={sheetRef} className={cx('sheet pd', open && 'open')} role="dialog" aria-modal="true" aria-label={product?.name}
           tabIndex={-1} inert={!open} onClick={(e) => e.stopPropagation()}>
-          <button type="button" className="close-desktop" onClick={nav.closeProduct} aria-label="Chiudi scheda"><Icon icon={faXmark} /></button>
-          <button type="button" className="close-mobile" onClick={nav.closeProduct} aria-label="Chiudi scheda"><Icon icon={faXmark} /></button>
-          {product && <SheetContent key={product.uid} product={product} onOpenViewer={setViewer} />}
+          {product && <ProductDetail key={product.uid} product={product} onOpenViewer={setViewer} />}
         </div>
       </div>
       {product && viewer !== null && (
@@ -72,26 +77,36 @@ export function ProductSheet({ entry }: { entry?: ProductRef }) {
   );
 }
 
-function SheetContent({ product, onOpenViewer }: { product: Product; onOpenViewer: (index: number) => void }) {
+function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenViewer: (index: number) => void }) {
   const nav = useNav();
   const admin = useAdmin();
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const [photo, setPhoto] = useState(false);
+  const [qty, setQty] = useState(1);
+  // superata la foto (mobile) o il titolo (desktop) i pulsanti diventano una barra con il nome del prodotto
+  const [stuck, setStuck] = useState(false);
+  const price = priceInfo(product);
+  const facts = keyFacts(product.tech);
+  const index = indexCatalog(catalogStore.get()!);
+  const update = (patch: Partial<Product>) => admin?.updateProduct(product.uid, patch);
+  const edit = (field: 'brand' | 'name' | 'infoLine' | 'price') => (admin ? (value: string) => update({ [field]: value }) : undefined);
+
   // dopo un caricamento la galleria si posiziona sulla nuova foto
   const imageCount = useRef(product.images.length);
   const grew = product.images.length > imageCount.current;
   useEffect(() => { imageCount.current = product.images.length; });
-  const update = (patch: Partial<Product>) => admin?.updateProduct(product.uid, patch);
-  const price = priceInfo(product);
-  const edit = (field: 'brand' | 'name' | 'infoLine' | 'price') => (admin ? (value: string) => update({ [field]: value }) : undefined);
+
+  // prima la stessa sottocategoria, poi il resto della categoria
+  const related = useMemo(() => {
+    const macro = index.byUid.get(product.uid)?.macro;
+    const others = index.entries.filter((e) => e.macro === macro && e.product.uid !== product.uid);
+    return [...others.filter((e) => e.product.categoryId === product.categoryId),
+      ...others.filter((e) => e.product.categoryId !== product.categoryId)].slice(0, 4);
+  }, [index, product.uid, product.categoryId]);
 
   // nel sito pubblico le sezioni vuote (o con il testo segnaposto) non vengono mostrate
-  const visible = TABS.filter(({ id }) => admin || (id === 'tech' ? product.tech.length > 0 : !isBlankHtml(product[id])));
-  const [tab, setTab] = useState<Tab>(visible[0]?.id ?? 'tech');
-  const switchTab = (id: Tab) => {
-    setTab(id);
-    bodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const hasDesc = !!admin || !isBlankHtml(product.desc);
+  const hasPair = !!admin || !isBlankHtml(product.pair);
+  const hasTech = !!admin || product.tech.length > 0;
+
   const canShare = !admin && (typeof navigator.share === 'function' || !!navigator.clipboard);
   const share = async () => {
     const url = new URL(nav.productHref(product.uid), location.href).href;
@@ -106,100 +121,214 @@ function SheetContent({ product, onOpenViewer }: { product: Product; onOpenViewe
   };
 
   return (
-    <>
-      <div className={cx('sheet-header-mobile', product.infoLine.trim() && 'has-subtitle', photo && 'has-photo-bg')}>
-        <Gallery key={product.images.length} product={product} showLast={grew} onPhoto={setPhoto} onOpen={onOpenViewer} />
-        <div className={cx('hero-info-overlay', canShare && 'has-share')}>
-          <Editable className="p-brand" value={product.brand} onChange={edit('brand')} singleLine />
-          <Editable className="p-title" role="heading" aria-level={2} value={product.name} onChange={edit('name')} singleLine />
-          {(product.infoLine || admin) && (
-            <Editable className="p-subtitle editable-placeholder" value={product.infoLine} onChange={edit('infoLine')}
-              placeholder="Inserisci un dettaglio rapido" singleLine />
-          )}
-          <div className="p-price-row">
-            {/* in admin si modifica il prezzo pieno; lo sconto si imposta nel riquadro offerte */}
-            {!admin && price.discount > 0 && <s className="p-price-old">{product.price}</s>}
-            <Editable className="p-price" value={admin ? product.price : price.label} onChange={edit('price')} singleLine />
-            {price.discount > 0 && <span className="sale-badge">-{price.discount}%</span>}
-            <div className="shipping-free-badge"><Icon icon={faTruckFast} /><span>Gratuita</span></div>
-          </div>
-        </div>
-      </div>
-      {canShare && (
-        <button type="button" className="share-btn" onClick={share} aria-label="Condividi prodotto" title="Condividi">
-          <Icon icon={faShareNodes} />
-        </button>
-      )}
+    <div className={cx('pd-scroll', stuck && 'is-stuck')}
+      onScroll={(e) => setStuck(e.currentTarget.scrollTop > (e.currentTarget.firstElementChild as HTMLElement).offsetHeight - 70)}>
+      <Gallery key={product.images.length} product={product} showLast={grew} onOpen={onOpenViewer} />
 
-      <div className="sheet-body-mobile" ref={bodyRef}>
-        <div className="p-content">
-          <Offers product={product} />
-          {visible.map(({ id, title }) => (
-            <div key={id} className={cx('tab-content', tab === id && 'active')} id={`tab-${id}`} role="tabpanel">
-              <h4 className="sheet-section-title">{title}</h4>
-              {id === 'tech' ? (
-                <>
-                  <TechTable product={product} />
-                  {admin && (
-                    <div className="sheet-admin-actions">
-                      <button type="button" className="sheet-admin-btn primary"
-                        onClick={() => update({ tech: [...product.tech, { k: 'Nuovo Campo', v: 'Valore' }] })}>
-                        <Icon icon={faPlus} /><span>AGGIUNGI RIGA</span>
-                      </button>
-                      <button type="button" className="sheet-admin-btn" onClick={() => admin.copyTech(product.uid)}>
-                        <Icon icon={faCopy} /><span>COPIA SCHEDA</span>
-                      </button>
-                      <button type="button" className="sheet-admin-btn" onClick={() => admin.pasteTech(product.uid)}>
-                        <Icon icon={faPaste} /><span>INCOLLA SCHEDA</span>
-                      </button>
-                      <button type="button" className="sheet-admin-btn" onClick={() => admin.copyProduct(product.uid)}>
-                        <Icon icon={faBoxArchive} /><span>COPIA PRODOTTO</span>
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <RichText value={product[id]} onChange={admin ? (html) => update({ [id]: html }) : undefined} />
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {visible.length > 1 && (
-        <nav className="tabs-nav" role="tablist" aria-label="Sezioni scheda">
-          {visible.map(({ id, label, icon }) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} aria-controls={`tab-${id}`}
-              className={cx('tab-link', tab === id && 'active')} onClick={() => switchTab(id)}>
-              <Icon icon={icon} />
-              <span>{label}</span>
+      <div className="pd-side">
+        <div className="pd-actions">
+          <span className="pd-actions-title" aria-hidden="true">{product.name}</span>
+          {canShare && (
+            <button type="button" className="pd-icon-btn" onClick={share} aria-label="Condividi prodotto" title="Condividi">
+              <Icon icon={faShareNodes} />
             </button>
-          ))}
-        </nav>
+          )}
+          <button type="button" className="pd-icon-btn" onClick={nav.closeProduct} aria-label="Chiudi scheda" title="Chiudi">
+            <Icon icon={faXmark} />
+          </button>
+        </div>
+
+        <div className="pd-info" onScroll={(e) => setStuck(e.currentTarget.scrollTop > 110)}>
+          <header className="pd-head">
+            <Editable className="pd-brand" value={product.brand} onChange={edit('brand')} singleLine />
+            <Editable className="pd-title" role="heading" aria-level={2} value={product.name} onChange={edit('name')} singleLine />
+            {(product.infoLine || admin) && (
+              <Editable className="pd-subtitle editable-placeholder" value={product.infoLine} onChange={edit('infoLine')}
+                placeholder="Inserisci un dettaglio rapido" singleLine />
+            )}
+            <div className="pd-price-row">
+              {/* in admin si modifica il prezzo pieno; lo sconto si imposta nel riquadro offerte */}
+              {!admin && price.discount > 0 && <s className="pd-price-old">{product.price}</s>}
+              <Editable className="pd-price" value={admin ? product.price : price.label} onChange={edit('price')} singleLine />
+              {price.discount > 0 && <span className="sale-badge">-{price.discount}%</span>}
+            </div>
+            <div className="pd-ship"><Icon icon={faTruckFast} /> Spedizione gratuita</div>
+          </header>
+
+          {facts.length > 0 && (
+            <dl className="pd-facts">
+              {facts.map((f) => <div key={f.k}><dt>{f.k}</dt><dd>{f.v}</dd></div>)}
+            </dl>
+          )}
+
+          {admin ? <OffersEditor product={product} /> : <PackPicker product={product} qty={qty} onSelect={setQty} />}
+          {!admin && <InSelection id={product.id} />}
+
+          {hasDesc && (
+            <Block title="Descrizione" open>
+              <RichText value={product.desc} onChange={admin ? (desc) => update({ desc }) : undefined} />
+            </Block>
+          )}
+          {hasTech && (
+            <Block title="Scheda tecnica" meta={`${product.tech.length} voci`} open={!!admin || !hasDesc}>
+              <TechTable product={product} />
+              {admin && (
+                <div className="sheet-admin-actions">
+                  <button type="button" className="sheet-admin-btn primary"
+                    onClick={() => update({ tech: [...product.tech, { k: 'Nuovo Campo', v: 'Valore' }] })}>
+                    <Icon icon={faPlus} /><span>AGGIUNGI RIGA</span>
+                  </button>
+                  <button type="button" className="sheet-admin-btn" onClick={() => admin.copyTech(product.uid)}>
+                    <Icon icon={faCopy} /><span>COPIA SCHEDA</span>
+                  </button>
+                  <button type="button" className="sheet-admin-btn" onClick={() => admin.pasteTech(product.uid)}>
+                    <Icon icon={faPaste} /><span>INCOLLA SCHEDA</span>
+                  </button>
+                  <button type="button" className="sheet-admin-btn" onClick={() => admin.copyProduct(product.uid)}>
+                    <Icon icon={faBoxArchive} /><span>COPIA PRODOTTO</span>
+                  </button>
+                </div>
+              )}
+            </Block>
+          )}
+          {hasPair && (
+            <Block title="Abbinamenti" open={!!admin}>
+              <RichText value={product.pair} onChange={admin ? (pair) => update({ pair }) : undefined} />
+            </Block>
+          )}
+
+          {!admin && related.length > 0 && (
+            <Block title="Potrebbero piacerti" open>
+              <ul className="pd-rel">
+                {related.map(({ product: p }) => <RelatedItem key={p.uid} product={p} />)}
+              </ul>
+            </Block>
+          )}
+        </div>
+
+        {!admin && <BuyBar product={product} qty={qty} onQty={setQty} />}
+      </div>
+    </div>
+  );
+}
+
+/** Sezione richiudibile (elemento nativo <details>: tastiera e screen reader gia' gestiti). */
+function Block({ title, meta, open, children }: { title: string; meta?: string; open: boolean; children: ReactNode }) {
+  return (
+    <details className="pd-block" open={open}>
+      <summary>
+        <span className="pd-block-title">{title}</span>
+        {meta && <span className="pd-block-meta">{meta}</span>}
+        <Icon icon={faChevronDown} />
+      </summary>
+      <div className="pd-block-body">{children}</div>
+    </details>
+  );
+}
+
+/** Prodotto correlato: riga compatta (foto, nome, prezzo) con il "+" per aggiungerlo al volo. */
+function RelatedItem({ product }: { product: Product }) {
+  const nav = useNav();
+  const price = priceInfo(product);
+  return (
+    <li className="pd-rel-item">
+      <LinkBox className="pd-rel-link" href={nav.productHref(product.uid)} onOpen={() => nav.openProduct(product.uid)}>
+        <Media className="pd-rel-media" imgClassName="pd-rel-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
+          variant="search" alt="" placeholder={<div className="mini-no-img"><Icon icon={faImage} /></div>} />
+        <span className="pd-rel-text">
+          <span className="pd-rel-brand">{product.brand}</span>
+          <span className="pd-rel-name">{product.name}</span>
+          <span className="pd-rel-price">
+            <strong>{price.label}</strong>
+            {price.discount > 0 && <s>{product.price}</s>}
+          </span>
+        </span>
+      </LinkBox>
+      <QuickAdd product={product} />
+    </li>
+  );
+}
+
+/* ---------- Acquisto ---------- */
+
+function PackPicker({ product, qty, onSelect }: { product: Product; qty: number; onSelect: (qty: number) => void }) {
+  const offers = packOffers(product);
+  if (!offers.length) return null;
+  const unit = priceInfo(product).final;
+  const options = [
+    { qty: 1, discount: 0, total: unit, perUnit: null as number | null },
+    ...offers.map((o) => ({ qty: o.qty, discount: o.discount, total: o.total, perUnit: o.perUnit })),
+  ];
+  return (
+    <div className="pd-packs-wrap">
+      <div className="pd-label">Scegli la confezione</div>
+      <div className="pd-packs" role="radiogroup" aria-label="Confezione">
+        {options.map((o, i) => (
+          <button key={i} type="button" role="radio" aria-checked={qty === o.qty}
+            className={cx('pd-pack', qty === o.qty && 'active')} onClick={() => onSelect(o.qty)}>
+            <span className="pd-pack-qty">{o.qty === 1 ? '1 pezzo' : `${o.qty} pezzi`}</span>
+            <strong>{o.total !== null ? formatPrice(o.total, product.price) : product.price}</strong>
+            <small>{o.perUnit !== null ? `${formatPrice(o.perUnit, product.price)} cad.` : 'singolo'}</small>
+            {o.discount > 0 && <span className="sale-badge">-{o.discount}%</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InSelection({ id }: { id: string }) {
+  const nav = useNav();
+  const qty = useStore(selectionStore)[id] ?? 0;
+  if (!qty) return null;
+  return (
+    <button type="button" className="pd-in-selection" onClick={nav.openSelection}>
+      <Icon icon={faBagShopping} /> Nella tua selezione: <strong>{qty} pz</strong>
+      <span>Apri <Icon icon={faArrowRight} /></span>
+    </button>
+  );
+}
+
+function BuyBar({ product, qty, onQty }: { product: Product; qty: number; onQty: (qty: number) => void }) {
+  const quote = lineQuote(product, qty);
+  const saving = quote.list !== null && quote.total !== null ? quote.list - quote.total : 0;
+  const add = () => {
+    addToSelection(product.id, qty);
+    toast(`Aggiunto alla selezione: ${qty} × ${product.name || 'prodotto'}`);
+    onQty(1);
+  };
+  return (
+    <div className="pd-cta">
+      {saving > 0.004 && (
+        <div className="pd-cta-saving">
+          Risparmi {formatPrice(saving, product.price)}{quote.packs.length ? ` · ${packNote(quote)}` : ''}
+        </div>
       )}
-    </>
+      <div className="pd-cta-row">
+        <Stepper value={qty} onChange={onQty} />
+        <button type="button" className="buy-btn" onClick={add}>
+          <Icon icon={faBagShopping} />
+          <span>Aggiungi</span>
+          {quote.total !== null && <strong>{formatPrice(quote.total, product.price)}</strong>}
+        </button>
+      </div>
+    </div>
   );
 }
 
 /* ---------- Galleria ---------- */
 
-function Gallery({ product, showLast, onPhoto, onOpen }: {
-  product: Product; showLast: boolean; onPhoto: (photo: boolean) => void; onOpen: (i: number) => void;
-}) {
+function Gallery({ product, showLast, onOpen }: { product: Product; showLast: boolean; onOpen: (i: number) => void }) {
   const admin = useAdmin();
   const trackRef = useRef<HTMLDivElement>(null);
   const images = product.images.map((src, i) => ({ src, mode: product.imagesMode[i], index: i })).filter((img) => img.src);
   const [active, setActive] = useState(showLast ? Math.max(0, images.length - 1) : 0);
+  const frame = useRef(0);
 
   useLayoutEffect(() => {
     const track = trackRef.current;
     if (track && active) track.scrollTo({ left: track.offsetWidth * active, behavior: 'instant' });
   }, []); // solo al montaggio
-  const [photos, setPhotos] = useState<boolean[]>([]);
-  const photo = !!photos[active];
-  const frame = useRef(0);
-
-  useEffect(() => onPhoto(photo), [photo, onPhoto]);
 
   const onScroll = () => {
     if (frame.current) return;
@@ -213,39 +342,37 @@ function Gallery({ product, showLast, onPhoto, onOpen }: {
     const track = trackRef.current;
     if (track) track.scrollTo({ left: track.offsetWidth * Math.max(0, Math.min(images.length - 1, i)), behavior: 'smooth' });
   };
-  const setPhotoAt = useCallback((i: number, value: boolean) => {
-    setPhotos((prev) => (prev[i] === value ? prev : Object.assign([...prev], { [i]: value })));
-  }, []);
   const current = images[active];
 
   return (
-    <>
-      {images.length > 1 && (
-        <>
-          <button type="button" className="gallery-nav prev" style={{ opacity: active === 0 ? 0.3 : 1 }}
-            onClick={() => goTo(active - 1)} aria-label="Immagine precedente"><Icon icon={faChevronLeft} /></button>
-          <button type="button" className="gallery-nav next" style={{ opacity: active >= images.length - 1 ? 0.3 : 1 }}
-            onClick={() => goTo(active + 1)} aria-label="Immagine successiva"><Icon icon={faChevronRight} /></button>
-        </>
-      )}
-      <div className={cx('p-track', photo && 'has-photo-bg')} ref={trackRef} onScroll={onScroll}>
+    <div className="pd-media">
+      <div className="pd-track" ref={trackRef} onScroll={onScroll}>
         {images.length ? images.map((img, i) => (
-          <Media key={i} className="p-slide" imgClassName="p-img zoomable" src={img.src} mode={img.mode} variant="gallery"
-            eager={i === 0} alt={`${product.name} – immagine ${i + 1}`} onSurface={(value) => setPhotoAt(i, value)}
-            onImageClick={() => onOpen(i)} />
+          <Media key={i} className="pd-slide" imgClassName="pd-img" src={img.src} mode={img.mode} variant="gallery"
+            eager={i === 0} alt={`${product.name} – immagine ${i + 1}`} onImageClick={() => onOpen(i)} />
         )) : (
-          <div className="p-slide p-slide-empty"><Icon icon={faImage} /><span>{admin ? 'NO FOTO' : 'Nessuna foto'}</span></div>
+          <div className="pd-slide pd-slide-empty"><Icon icon={faImage} /><span>Nessuna foto</span></div>
         )}
       </div>
-      <button type="button" className={cx('hero-image-peek', photo && 'has-photo-bg')} disabled={!images.length}
-        onClick={() => onOpen(active)} aria-label="Apri immagine prodotto" />
+      <OfferBadges product={product} className="pd-badges" />
       {images.length > 1 && (
-        <div className="p-dots">
-          {images.map((_, i) => (
-            <button key={i} type="button" className={cx('dot', i === active && 'active')} aria-label={`Immagine ${i + 1}`}
-              onClick={() => goTo(i)} />
-          ))}
-        </div>
+        <>
+          <button type="button" className="pd-nav prev" disabled={active === 0} onClick={() => goTo(active - 1)}
+            aria-label="Immagine precedente"><Icon icon={faChevronLeft} /></button>
+          <button type="button" className="pd-nav next" disabled={active >= images.length - 1} onClick={() => goTo(active + 1)}
+            aria-label="Immagine successiva"><Icon icon={faChevronRight} /></button>
+          <div className="pd-dots">
+            {images.map((_, i) => (
+              <button key={i} type="button" className={cx('pd-dot', i === active && 'active')} aria-label={`Immagine ${i + 1}`}
+                onClick={() => goTo(i)} />
+            ))}
+          </div>
+        </>
+      )}
+      {current && (
+        <button type="button" className="pd-zoom" onClick={() => onOpen(active)} aria-label="Ingrandisci immagine" title="Ingrandisci">
+          <Icon icon={faMagnifyingGlassPlus} />
+        </button>
       )}
       {admin && (
         <div className="upload-overlay">
@@ -263,7 +390,7 @@ function Gallery({ product, showLast, onPhoto, onOpen }: {
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 

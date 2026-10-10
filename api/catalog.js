@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       })),
     }));
 
-    send(res, 200, { title: config.title || '', macroCategories },
+    send(res, 200, { ...config, title: config.title || '', macroCategories },
       'public, max-age=0, s-maxage=60, stale-while-revalidate=604800');
   } catch (err) {
     console.error(err);

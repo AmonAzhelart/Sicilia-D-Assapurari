@@ -6,7 +6,7 @@
     { "source": "/admin", "destination": "/admin/", "permanent": true }
   ],
   "rewrites": [
-    { "source": "/admin/(.*)", "destination": "/admin.html" },
+    { "source": "/admin/:path*", "destination": "/admin.html" },
     { "source": "/((?!api/|assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
@@ -24,7 +24,7 @@
       ]
     },
     {
-      "source": "/(admin.*)",
+      "source": "/(admin.html|admin/(.*)|admin-login.html)",
       "headers": [{ "key": "X-Robots-Tag", "value": "noindex, nofollow" }]
     }
   ]

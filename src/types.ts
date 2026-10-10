@@ -1,6 +1,6 @@
 // Modello del catalogo. La forma ricalca i JSON su GitLab:
 //   config.json        -> { title, macroCategories: MacroEntry[] }
-//   <macro>.json       -> { subcategories: Sub[], products: Product[] (senza uid) }
+//   <macro>.json       -> { subcategories: Sub[], products: Product[] (senza uid, con il codice id) }
 // Le chiavi sconosciute vengono preservate al salvataggio.
 
 export interface TechRow {
@@ -15,8 +15,10 @@ export interface Pack {
 }
 
 export interface Product {
-  /** Solo client: identificativo stabile per React e per l'URL. Mai salvato. */
+  /** Solo client: identificativo per React e per lo stato dell'admin. Mai salvato. */
   uid: string;
+  /** Codice fisso del prodotto (salvato nel JSON): identifica il prodotto nei link e nella selezione, anche se cambia nome. */
+  id: string;
   /** Id della sottocategoria (nome del campo nel JSON). */
   categoryId: string;
   brand: string;
@@ -60,5 +62,9 @@ export interface Macro {
 
 export interface Catalog {
   title: string;
+  /** Opzionale: frase sotto il titolo nella home. */
+  tagline: string;
+  /** Opzionale: numero WhatsApp per le richieste d'ordine (es. "+39 333 1234567"). */
+  whatsapp: string;
   macros: Macro[];
 }

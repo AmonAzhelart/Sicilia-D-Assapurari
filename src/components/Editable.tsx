@@ -21,7 +21,8 @@ interface EditableProps extends Omit<HTMLAttributes<HTMLElement>, 'onChange'> {
  */
 export function Editable({ value, onChange, html, as: Tag = 'div', placeholder, singleLine, ...rest }: EditableProps) {
   const ref = useRef<HTMLElement>(null);
-  const safe = useMemo(() => (html ? sanitizeHtml(value) : value), [html, value]);
+  // in sola lettura via anche le righe vuote finali (mentre si scrive servono)
+  const safe = useMemo(() => (html ? sanitizeHtml(value, !onChange) : value), [html, value, !onChange]);
   // textContent ignora il text-transform CSS: i campi in maiuscoletto si salvano come digitati
   const read = (el: HTMLElement) => (html ? el.innerHTML : singleLine ? el.textContent ?? '' : el.innerText);
 
@@ -51,6 +52,11 @@ export function Editable({ value, onChange, html, as: Tag = 'div', placeholder, 
         e.preventDefault();
         document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
       }}
+      // spazi iniziali/finali tolti all'uscita dal campo, non durante la digitazione (il cursore non salta)
+      onBlur={singleLine ? (e: React.FocusEvent<HTMLElement>) => {
+        const text = read(e.currentTarget);
+        if (text !== text.trim()) onChange(text.trim());
+      } : undefined}
       onKeyDown={singleLine ? (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === 'Enter') {
           e.preventDefault();
