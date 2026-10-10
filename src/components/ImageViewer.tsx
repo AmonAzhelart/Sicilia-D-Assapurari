@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { faChevronLeft, faChevronRight, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { cx } from '../lib/hooks';
-import { surfaceStyle, useProcessedImage } from '../lib/images';
+import { edgeBackground, needsProcessing, surfaceStyle, useProcessedImage } from '../lib/images';
 import { Icon } from './Icon';
 
 const MAX_SCALE = 4;
@@ -19,6 +19,9 @@ export function ImageViewer({ images, modes, start, onClose }: {
   const t = useRef({ scale: 1, x: 0, y: 0 });
   const result = useProcessedImage(images[index], modes[index], 'viewer', true, true);
   const photo = !!result?.surface.photo;
+  const full = !needsProcessing(modes[index]);
+  const [edge, setEdge] = useState<string | undefined>();
+  const shownEdge = full ? edge : undefined;
   const total = images.length;
 
   const apply = useCallback(() => {
@@ -57,6 +60,7 @@ export function ImageViewer({ images, modes, start, onClose }: {
   useEffect(() => {
     t.current = { scale: 1, x: 0, y: 0 };
     setLoaded(false);
+    setEdge(undefined);
     apply();
   }, [index, apply]);
 
@@ -177,7 +181,7 @@ export function ImageViewer({ images, modes, start, onClose }: {
             <Icon icon={faChevronLeft} />
           </button>
         )}
-        <div ref={stageRef} className={cx('image-viewer-stage', photo && 'has-photo-bg')} style={surfaceStyle(result?.surface)}
+        <div ref={stageRef} className={cx('image-viewer-stage', photo && 'has-photo-bg')} style={surfaceStyle(result?.surface, shownEdge)}
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
           onDoubleClick={(e) => {
             // su touch il doppio tap e' gia' gestito da onPointerUp
@@ -185,7 +189,7 @@ export function ImageViewer({ images, modes, start, onClose }: {
           }}>
           <div className="image-light-backdrop" style={photo ? { opacity: 0 } : undefined} />
           <img ref={imgRef} key={result?.src} className="image-viewer-img" src={result?.src} alt={`Immagine ${index + 1} di ${total}`}
-            draggable={false} style={{ opacity: loaded ? 1 : 0 }} onLoad={() => setLoaded(true)} />
+            draggable={false} style={{ opacity: loaded ? 1 : 0 }} onLoad={(e) => { if (full) setEdge(edgeBackground(images[index], e.currentTarget, stageRef.current)); setLoaded(true); }} />
         </div>
         {total > 1 && (
           <button type="button" className="image-viewer-nav next" onClick={() => go(1)} aria-label="Immagine successiva">

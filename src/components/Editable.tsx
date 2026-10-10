@@ -51,6 +51,11 @@ export function Editable({ value, onChange, html, as: Tag = 'div', placeholder, 
         e.preventDefault();
         document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
       }}
+      // spazi iniziali/finali tolti all'uscita dal campo, non durante la digitazione (il cursore non salta)
+      onBlur={singleLine ? (e: React.FocusEvent<HTMLElement>) => {
+        const text = read(e.currentTarget);
+        if (text !== text.trim()) onChange(text.trim());
+      } : undefined}
       onKeyDown={singleLine ? (e: React.KeyboardEvent<HTMLElement>) => {
         if (e.key === 'Enter') {
           e.preventDefault();

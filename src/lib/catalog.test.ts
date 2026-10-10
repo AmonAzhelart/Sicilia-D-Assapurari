@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog, serializeCatalog, indexCatalog, searchCatalog, macroFileName, isBlankHtml, slugify } from './catalog.ts';
+import { buildCatalog, serializeCatalog, indexCatalog, searchCatalog, macroFileName, isBlankHtml, slugify, keyFacts } from './catalog.ts';
 
 const config = {
   title: "SICILIA D'ASSAPURARI",
@@ -27,6 +27,14 @@ test('serializzazione: i JSON salvati mantengono la struttura originale', () => 
   assert.deepEqual(saved.subcategories, vini.subcategories);
   assert.deepEqual(saved.products[0], vini.products[0]); // chiavi sconosciute preservate, nessun uid
   assert.equal(saved.products[1].infoLine, '');
+});
+
+test('tagline e numero WhatsApp: salvati solo se impostati', () => {
+  const catalog = buildCatalog({ ...config, tagline: 'Eccellenze siciliane', whatsapp: '+39 333 1234567' }, [vini]);
+  const saved = JSON.parse(serializeCatalog(catalog).get('config.json')!);
+  assert.equal(saved.tagline, 'Eccellenze siciliane');
+  assert.equal(saved.whatsapp, '+39 333 1234567');
+  assert.deepEqual(Object.keys(JSON.parse(serializeCatalog(buildCatalog(config, [vini])).get('config.json')!)), ['title', 'macroCategories']);
 });
 
 test('la risposta di /api/catalog (dati incorporati) produce lo stesso catalogo', () => {
@@ -57,4 +65,14 @@ test('sezioni vuote o con testo segnaposto', () => {
   assert.equal(isBlankHtml('<p>Abbinamenti consigliati...</p>'), true);
   assert.equal(isBlankHtml('<p>&nbsp;</p>'), true);
   assert.equal(isBlankHtml('<p>Pesce crudo</p>'), false);
+});
+
+test('dati chiave: riconosciuti dal nome della voce, in ordine di importanza', () => {
+  const tech = [
+    { k: 'PRODUTTORE', v: 'Feudo' }, { k: 'ZONA DI PRODUZIONE', v: 'Etna' }, { k: 'UVAGGIO', v: 'Nerello' },
+    { k: 'GRADAZIONE', v: '14°' }, { k: 'FORMATO', v: '75 cl' }, { k: 'DENOMINAZIONE', v: 'DOC' }, { k: 'COLORE', v: '' },
+  ];
+  assert.deepEqual(keyFacts(tech).map((r) => r.k), ['GRADAZIONE', 'FORMATO', 'UVAGGIO', 'DENOMINAZIONE']);
+  assert.deepEqual(keyFacts([{ k: 'INGREDIENTE PRINCIPALE', v: 'Fico d\u2019India' }]).map((r) => r.k), ['INGREDIENTE PRINCIPALE']);
+  assert.deepEqual(keyFacts([{ k: 'COLORE', v: 'Rosso' }]), []);
 });

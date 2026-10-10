@@ -60,5 +60,9 @@ export interface Macro {
 
 export interface Catalog {
   title: string;
+  /** Opzionale: frase sotto il titolo nella home. */
+  tagline: string;
+  /** Opzionale: numero WhatsApp per le richieste d'ordine (es. "+39 333 1234567"). */
+  whatsapp: string;
   macros: Macro[];
 }

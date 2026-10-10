@@ -110,9 +110,30 @@ const newProduct = (categoryId: string) => normalizeProduct({
 export const adminApi: AdminApi = {
   toggleMenu: () => menuStore.set((open) => !open),
 
-  async editTitle() {
-    const title = (await prompt({ title: 'Nome catalogo', label: 'La prima parola appare sopra il logo', value: getCatalog().title }))?.trim();
-    if (title) update((c) => ({ ...c, title }));
+  async editSettings() {
+    const field = await choose({
+      title: 'Impostazioni',
+      message: 'Cosa vuoi modificare?',
+      options: [
+        { value: 'title', label: `Nome catalogo · ${getCatalog().title}` },
+        { value: 'whatsapp', label: `WhatsApp per gli ordini · ${getCatalog().whatsapp || 'non impostato'}` },
+      ],
+    });
+    if (field === 'title') {
+      const title = (await prompt({ title: 'Nome catalogo', label: 'La prima parola appare sopra il logo', value: getCatalog().title }))?.trim();
+      if (title) update((c) => ({ ...c, title }));
+    } else if (field === 'whatsapp') {
+      const value = await prompt({
+        title: 'WhatsApp per gli ordini',
+        label: 'Numero con prefisso internazionale (es. +39 333 1234567). Vuoto = i clienti condividono la richiesta.',
+        value: getCatalog().whatsapp,
+      });
+      if (value !== null) update((c) => ({ ...c, whatsapp: value.trim() }));
+    }
+  },
+
+  setMeta(patch) {
+    update((c) => ({ ...c, ...patch }));
   },
 
   async addMacro() {

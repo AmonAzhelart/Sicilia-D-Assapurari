@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPrice, packOffers, parsePrice, priceInfo } from './pricing.ts';
+import { formatPrice, lineQuote, packOffers, parsePrice, priceInfo } from './pricing.ts';
 import type { Product } from '../types';
 
 const product = (fields: Partial<Product>): Product => ({
@@ -36,4 +36,21 @@ test('pack: somma dei pezzi, poi sconto del pack (sul prezzo gia\' scontato)', (
   assert.deepEqual(six, { qty: 6, discount: 0, full: 240, total: 240, perUnit: 40 });
   const [onSale] = packOffers(product({ discount: 20, packs: [{ qty: 10, discount: 10 }] }));
   assert.equal(onSale.total, 288);
+});
+
+test('quantita\': miglior combinazione di pack', () => {
+  const p = product({ price: '€ 10.00', packs: [{ qty: 6, discount: 10 }, { qty: 10, discount: 12 }] });
+  // 12 pezzi: 6+6 e 10+2 costano uguale (108)
+  const twelve = lineQuote(p, 12);
+  assert.equal(twelve.total, 108);
+  assert.equal(twelve.list, 120);
+  const thirteen = lineQuote(p, 13);
+  assert.equal(thirteen.total, 118); // 6+6+1
+  assert.deepEqual(lineQuote(p, 3), { qty: 3, list: 30, total: 30, packs: [] });
+  const sixteen = lineQuote(p, 16);
+  assert.equal(sixteen.total, 142); // 10+6 = 88+54
+  assert.deepEqual(sixteen.packs, [{ qty: 10, discount: 12, count: 1 }, { qty: 6, discount: 10, count: 1 }]);
+  const onSale = lineQuote(product({ price: '€ 10.00', discount: 20 }), 2);
+  assert.deepEqual([onSale.list, onSale.total], [20, 16]);
+  assert.equal(lineQuote(product({ price: 'su richiesta' }), 2).total, null);
 });

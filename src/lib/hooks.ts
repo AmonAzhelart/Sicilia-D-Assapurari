@@ -100,3 +100,43 @@ export function useEscape(active: boolean, onEscape: () => void) {
 }
 
 export const cx = (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ');
+
+/** Porta la sezione di una sottocategoria sotto l'header fisso. */
+export function scrollToSection(subId: string, smooth = true) {
+  const go = (behavior: ScrollBehavior) => {
+    const el = document.getElementById(`section-${subId}`);
+    if (!el) return false;
+    const header = document.querySelector<HTMLElement>('.top-bar')?.offsetHeight ?? 0;
+    const top = Math.max(0, el.getBoundingClientRect().top + window.scrollY - header - 14);
+    if (Math.abs(top - window.scrollY) < 3) return false;
+    window.scrollTo({ top, behavior });
+    return true;
+  };
+  const animate = smooth && !document.body.classList.contains('perf-lite');
+  if (!go(animate ? 'smooth' : 'instant')) return;
+  // durante lo scorrimento l'header si compatta e cambia altezza: correzione finale
+  let done = false;
+  const fix = () => {
+    if (!done) go('smooth');
+    done = true;
+  };
+  if ('onscrollend' in window) window.addEventListener('scrollend', fix, { once: true });
+  setTimeout(fix, animate ? 1200 : 80);
+}
+
+/** Dissolvenza in entrata degli elementi `.reveal` quando entrano nello schermo. */
+export function useReveal(rootRef: RefObject<HTMLElement | null>, deps: unknown[] = []) {
+  useEffect(() => {
+    const items = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('.reveal:not(.in)') ?? []);
+    if (typeof IntersectionObserver === 'undefined') return void items.forEach((el) => el.classList.add('in'));
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('in');
+        io.unobserve(entry.target);
+      }
+    }, { rootMargin: '0px 0px -8% 0px' });
+    items.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, deps);
+}

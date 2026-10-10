@@ -183,7 +183,70 @@ function stripWhiteBackground(ctx: CanvasRenderingContext2D, width: number, heig
   };
 }
 
-export function surfaceStyle(surface: Surface | undefined): CSSProperties | undefined {
+/* ---------- Colore dei bordi (foto "Full Screen") ---------- */
+
+// Le foto "Full Screen" restano intere (contain): lo sfondo prende il colore dei loro bordi,
+// cosi' un packshot su bianco riempie il riquadro senza tagli ne' fasce.
+interface Edges { top: string; right: string; bottom: string; left: string }
+const edges = new Map<string, Edges | null>();
+let probe: CanvasRenderingContext2D | null = null;
+const SIZE = 32;
+
+/** Colore medio di ciascun lato di un'immagine gia' caricata (lettura 32x32, costo trascurabile). */
+function sampleEdges(src: string, img: HTMLImageElement): Edges | null {
+  if (edges.has(src)) return edges.get(src)!;
+  let result: Edges | null = null;
+  try {
+    if (!probe) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = SIZE;
+      probe = canvas.getContext('2d', { willReadFrequently: true });
+    }
+    if (probe) {
+      probe.clearRect(0, 0, SIZE, SIZE);
+      probe.drawImage(img, 0, 0, SIZE, SIZE);
+      const data = probe.getImageData(0, 0, SIZE, SIZE).data;
+      const average = (inSide: (x: number, y: number) => boolean) => {
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const i = (y * SIZE + x) * 4;
+            if (!inSide(x, y) || data[i + 3] < 128) continue;
+            r += data[i];
+            g += data[i + 1];
+            b += data[i + 2];
+            n++;
+          }
+        }
+        return n ? `rgb(${Math.round(r / n)}, ${Math.round(g / n)}, ${Math.round(b / n)})` : null;
+      };
+      const top = average((_, y) => y < 2);
+      const bottom = average((_, y) => y >= SIZE - 2);
+      const left = average((x) => x < 2);
+      const right = average((x) => x >= SIZE - 2);
+      if (top && bottom && left && right) result = { top, right, bottom, left };
+    }
+  } catch { /* immagine di un altro dominio: niente lettura dei pixel */ }
+  edges.set(src, result);
+  return result;
+}
+
+/**
+ * Sfondo che prolunga i bordi di una foto intera (object-fit: contain): le fasce sopra/sotto prendono
+ * il colore del bordo alto/basso, quelle laterali dei lati. Il taglio cade sotto la foto, quindi non si vede.
+ */
+export function edgeBackground(src: string, img: HTMLImageElement, box: HTMLElement | null): string | undefined {
+  const e = sampleEdges(src, img);
+  if (!e || !box?.clientHeight || !img.naturalHeight) return undefined;
+  const bandsTopBottom = img.naturalWidth / img.naturalHeight >= box.clientWidth / box.clientHeight;
+  return bandsTopBottom
+    ? `linear-gradient(180deg, ${e.top} 50%, ${e.bottom} 50%)`
+    : `linear-gradient(90deg, ${e.left} 50%, ${e.right} 50%)`;
+}
+
+/** Sfondo del riquadro: bordi della foto (foto intere), sfumatura adattiva (foto scontornate) o crema (CSS). */
+export function surfaceStyle(surface: Surface | undefined, edgeBg?: string): CSSProperties | undefined {
+  if (edgeBg) return { backgroundImage: edgeBg };
   if (!surface?.photo) return undefined;
   return {
     backgroundImage: `radial-gradient(ellipse 78% 68% at 50% 42%, rgba(216, 164, 79, 0.07) 0%, rgba(255, 255, 255, 0) 72%), linear-gradient(180deg, ${surface.top} 0%, ${surface.bottom} 100%)`,

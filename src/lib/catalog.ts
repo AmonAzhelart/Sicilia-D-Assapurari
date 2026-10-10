@@ -58,6 +58,8 @@ function normalizeMacro(entry: Json, file?: Json): Macro {
 export function buildCatalog(config: Json, files?: Json[]): Catalog {
   return {
     title: str(config?.title),
+    tagline: str(config?.tagline),
+    whatsapp: str(config?.whatsapp),
     macros: list(config?.macroCategories).map((m, i) => normalizeMacro(m, files?.[i])),
   };
 }
@@ -105,7 +107,9 @@ export function serializeCatalog(catalog: Catalog): Map<string, string> {
       products: m.products.map(({ uid: _uid, ...p }) => p),
     }, null, 2));
   }
-  files.set(CONFIG_FILE, JSON.stringify({ title: catalog.title, macroCategories }, null, 2));
+  // tagline e whatsapp solo se impostati: un config senza di essi resta identico
+  const { title, tagline, whatsapp } = catalog;
+  files.set(CONFIG_FILE, JSON.stringify({ title, ...(tagline && { tagline }), ...(whatsapp && { whatsapp }), macroCategories }, null, 2));
   return files;
 }
 
@@ -235,4 +239,27 @@ export function isBlankHtml(html: string): boolean {
 export function splitTitle(title: string): [string, string] {
   const i = title.indexOf(' ');
   return i > 0 ? [title.slice(0, i), title.slice(i + 1)] : [title, title];
+}
+
+/* ---------- Dati chiave della scheda tecnica ---------- */
+
+// In ordine di importanza; le voci sono testo libero, quindi si riconoscono dal nome.
+const FACT_PATTERNS = [
+  /gradazione|alcol/i,
+  /formato|capacit|contenuto|peso|grammatura/i,
+  /uvaggio|vitign|\buve\b|ingrediente/i,
+  /denominazione|tipologia/i,
+  /zona|origine|provenienza|regione/i,
+  /annata|invecchiamento|affinamento|stagionatura/i,
+];
+
+/** Fino a 4 voci della scheda tecnica da mettere in evidenza in cima alla scheda prodotto. */
+export function keyFacts(tech: TechRow[], max = 4): TechRow[] {
+  const facts: TechRow[] = [];
+  for (const pattern of FACT_PATTERNS) {
+    const row = tech.find((r) => pattern.test(r.k) && r.v.trim() && !facts.includes(r));
+    if (row) facts.push(row);
+    if (facts.length === max) break;
+  }
+  return facts;
 }

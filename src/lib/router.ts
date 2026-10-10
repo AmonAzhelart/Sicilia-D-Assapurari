@@ -1,6 +1,6 @@
 // Navigazione con URL condivisibili:
-//   /<macro>/<sotto>       categoria          ?p=<prodotto>  scheda aperta          ?q=<testo>  ricerca aperta
-// Il pulsante "indietro" del browser/Android chiude scheda e ricerca.
+//   /<macro>/<sotto>  categoria   ?p=<prodotto> scheda   ?q=<testo> ricerca   ?selezione  richiesta d'ordine
+// Il pulsante "indietro" del browser/Android chiude scheda, ricerca e selezione.
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Catalog } from '../types';
 import { indexCatalog } from './catalog';
@@ -11,9 +11,10 @@ export interface View {
   subId: string | null;
   productUid: string | null;
   search: string | null;
+  selection: boolean;
 }
 
-export const HOME: View = { macroId: null, subId: null, productUid: null, search: null };
+export const HOME: View = { macroId: null, subId: null, productUid: null, search: null, selection: false };
 
 export function viewToUrl(view: View, catalog: Catalog, base: string): string {
   const index = indexCatalog(catalog);
@@ -28,6 +29,7 @@ export function viewToUrl(view: View, catalog: Catalog, base: string): string {
   const productSlug = view.productUid && index.productSlug.get(view.productUid);
   if (productSlug) params.set('p', productSlug);
   if (view.search !== null) params.set('q', view.search);
+  if (view.selection) params.set('selezione', '');
   const query = params.toString();
   return query ? `${path}?${query}` : path;
 }
@@ -45,6 +47,7 @@ export function urlToView(catalog: Catalog, base: string): View {
     subId: sub?.id ?? (product && product.macro === macro ? product.product.categoryId || null : null),
     productUid: product?.product.uid ?? null,
     search: params.get('q'),
+    selection: params.has('selezione'),
   };
 }
 
@@ -81,11 +84,15 @@ export interface Nav {
   goHome(): void;
   selectMacro(id: string): void;
   selectSub(id: string): void;
+  /** Aggiorna solo l'URL con la sottocategoria in vista (scroll-spy). */
+  markSub(id: string): void;
   openProduct(uid: string): void;
   closeProduct(): void;
   openSearch(): void;
   setSearch(query: string): void;
   closeSearch(): void;
+  openSelection(): void;
+  closeSelection(): void;
   href(view: Partial<View>): string;
   productHref(uid: string): string;
 }
