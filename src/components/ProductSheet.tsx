@@ -17,13 +17,13 @@ import { useNav } from '../lib/router';
 import { moveItem, useSortable } from '../lib/sortable';
 import { catalogStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
-import { OfferBadges, QuickAdd } from './Catalog';
+import { OfferBadges, ProductRow } from './Catalog';
 import { Editable, RichText } from './Editable';
 import { Icon } from './Icon';
 import { ImageViewer } from './ImageViewer';
 import { OffersEditor } from './Offers';
 import { packNote, Stepper } from './Selection';
-import { AdminIconButton, LinkBox, Media } from './ui';
+import { AdminIconButton, Media } from './ui';
 
 export function ProductSheet({ entry }: { entry?: ProductRef }) {
   const nav = useNav();
@@ -199,8 +199,8 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
 
           {!admin && related.length > 0 && (
             <Block title="Potrebbero piacerti" open>
-              <ul className="pd-rel">
-                {related.map(({ product: p }) => <RelatedItem key={p.uid} product={p} />)}
+              <ul className="prow-list pd-rel">
+                {related.map(({ product: p }) => <li key={p.uid}><ProductRow product={p} /></li>)}
               </ul>
             </Block>
           )}
@@ -223,29 +223,6 @@ function Block({ title, meta, open, children }: { title: string; meta?: string; 
       </summary>
       <div className="pd-block-body">{children}</div>
     </details>
-  );
-}
-
-/** Prodotto correlato: riga compatta (foto, nome, prezzo) con il "+" per aggiungerlo al volo. */
-function RelatedItem({ product }: { product: Product }) {
-  const nav = useNav();
-  const price = priceInfo(product);
-  return (
-    <li className="pd-rel-item">
-      <LinkBox className="pd-rel-link" href={nav.productHref(product.uid)} onOpen={() => nav.openProduct(product.uid)}>
-        <Media className="pd-rel-media" imgClassName="pd-rel-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
-          variant="search" alt="" placeholder={<div className="mini-no-img"><Icon icon={faImage} /></div>} />
-        <span className="pd-rel-text">
-          <span className="pd-rel-brand">{product.brand}</span>
-          <span className="pd-rel-name">{product.name}</span>
-          <span className="pd-rel-price">
-            <strong>{price.label}</strong>
-            {price.discount > 0 && <s>{product.price}</s>}
-          </span>
-        </span>
-      </LinkBox>
-      <QuickAdd product={product} />
-    </li>
   );
 }
 

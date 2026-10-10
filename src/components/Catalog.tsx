@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import {
   faArrowDown, faArrowRightArrowLeft, faArrowUp, faCamera, faCheck, faCopy, faGripVertical, faPaste, faPlus,
@@ -6,6 +6,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Product, Sub } from '../types';
 import { useAdmin } from '../lib/admin';
+import { fold } from '../lib/catalog';
 import { cx, scrollToSection } from '../lib/hooks';
 import { addToSelection, selectionStore } from '../lib/personal';
 import { formatPrice, packOffers, priceInfo, type PackOffer } from '../lib/pricing';
@@ -333,6 +334,64 @@ export const ProductCard = memo(function ProductCard({ product, eager = false, c
     </article>
   );
 });
+
+/**
+ * Riga prodotto compatta (correlati, ricerca): foto, produttore, nome, prezzo e "+" per aggiungere al volo.
+ * `terms` evidenzia le parole cercate; `meta` segue il prezzo (es. la sottocategoria).
+ */
+export function ProductRow({ product, meta, terms = [], active, id }: {
+  product: Product; meta?: ReactNode; terms?: string[]; active?: boolean; id?: string;
+}) {
+  const nav = useNav();
+  const admin = useAdmin();
+  const price = priceInfo(product);
+  return (
+    <div className={cx('prow', active && 'is-active')} id={id}>
+      <LinkBox className="prow-link" href={nav.productHref(product.uid)} onOpen={() => nav.openProduct(product.uid)}>
+        <Media className="prow-media" imgClassName="prow-img" src={product.images[0] || ''} mode={product.imagesMode[0]}
+          variant="search" alt="" placeholder={<div className="mini-no-img"><Icon icon={faImage} /></div>} />
+        <span className="prow-text">
+          <span className="prow-brand"><Highlight text={product.brand} terms={terms} /></span>
+          <span className="prow-name"><Highlight text={product.name} terms={terms} /></span>
+          <span className="prow-line">
+            <strong>{price.label}</strong>
+            {price.discount > 0 && <s>{product.price}</s>}
+            {meta}
+          </span>
+        </span>
+      </LinkBox>
+      {!admin && <QuickAdd product={product} />}
+    </div>
+  );
+}
+
+/** Evidenzia i termini cercati (senza accenti, come la ricerca) mantenendo il testo originale. */
+function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  if (!terms.length || !text) return <>{text}</>;
+  // testo piegato carattere per carattere, ricordando da quale carattere originale viene ogni lettera
+  let folded = '';
+  const origin: number[] = [];
+  for (let i = 0; i < text.length; i++) {
+    for (const ch of fold(text[i])) {
+      folded += ch;
+      origin.push(i);
+    }
+  }
+  const hit = new Array<boolean>(text.length).fill(false);
+  for (const term of terms) {
+    for (let at = folded.indexOf(term); at >= 0; at = folded.indexOf(term, at + 1)) {
+      for (let j = at; j < at + term.length; j++) hit[origin[j]] = true;
+    }
+  }
+  const parts: ReactNode[] = [];
+  for (let start = 0, i = 1; i <= text.length; i++) {
+    if (i < text.length && hit[i] === hit[start]) continue;
+    const piece = text.slice(start, i);
+    parts.push(hit[start] ? <mark key={start}>{piece}</mark> : piece);
+    start = i;
+  }
+  return <>{parts}</>;
+}
 
 /** "+" sulla card: aggiunge un pezzo alla selezione; se il prodotto c'e' gia' mostra quanti pezzi. */
 export function QuickAdd({ product }: { product: Product }) {
