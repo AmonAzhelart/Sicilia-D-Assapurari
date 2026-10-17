@@ -15,6 +15,13 @@ export function sanitizeHtml(html: string, trimEnd = false): string {
         || (name === 'style' && /url\s*\(|expression|javascript:/i.test(attr.value))
       ) el.removeAttribute(attr.name);
     }
+    // il browser copia lo sfondo calcolato negli span incollati: lo sfondo lo decide il tema
+    if (el instanceof HTMLElement && el.style.length) {
+      el.style.removeProperty('background');
+      el.style.removeProperty('background-color');
+      el.style.removeProperty('background-image');
+      if (!el.getAttribute('style')) el.removeAttribute('style');
+    }
   });
   if (trimEnd) trimTrailing(tpl.content);
   return tpl.innerHTML;
