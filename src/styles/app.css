@@ -7003,8 +7003,90 @@ body.perf-lite .pcard:hover .pcard-img {
     margin-top: 18px;
 }
 
+.promo-section .home-head {
+    flex-wrap: wrap;
+}
+
 .promo-section .home-head .sheet-admin-btn {
     flex: 0 0 auto;
+}
+
+/* telefono: equazione su una riga dentro un riquadro, card più bassa */
+@media (max-width: 599px) {
+    .promo-card {
+        gap: 16px;
+        padding: 12px 12px 20px;
+    }
+
+    .promo-card .promo-eq {
+        --eq: clamp(48px, 14vw, 64px);
+        gap: 12px 6px;
+        padding: 20px 8px 14px;
+        border-radius: calc(var(--radius-l) - 6px);
+        background: rgba(255, 255, 255, 0.035);
+    }
+
+    .promo-card .promo-eq-group {
+        gap: 6px;
+    }
+
+    .promo-card .promo-eq-item {
+        gap: 8px;
+    }
+
+    .promo-card .promo-fan.is-lg {
+        --s: var(--eq);
+        padding: 0 2px;
+    }
+
+    .promo-card .promo-fan-media {
+        border-radius: 14px;
+    }
+
+    .promo-card .promo-fan-media + .promo-fan-media {
+        margin-left: calc(var(--s) * -0.7);
+    }
+
+    .promo-card .promo-eq-label {
+        max-width: 92px;
+        font-size: 0.58rem;
+        letter-spacing: 0.08em;
+    }
+
+    .promo-card .promo-eq-op {
+        margin-bottom: 20px;
+        font-size: 1.3rem;
+    }
+
+    .promo-card .promo-eq-reward {
+        width: var(--eq);
+        height: var(--eq);
+        margin-bottom: 20px;
+        font-size: 1.2rem;
+        box-shadow: 0 8px 20px rgba(255, 138, 91, 0.35), inset 0 0 0 3px rgba(255, 255, 255, 0.14);
+    }
+
+    .promo-card .promo-eq-reward small {
+        font-size: 0.7rem;
+    }
+
+    .promo-card-text {
+        padding: 0 8px;
+    }
+
+    .promo-card .promo-card-top {
+        margin-bottom: 8px;
+    }
+
+    .promo-card-foot {
+        gap: 12px;
+        margin-top: 16px;
+    }
+
+    .promo-card-foot .hero-cta {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
 }
 
 /* ---------- Selettori di prodotti (admin) ---------- */
