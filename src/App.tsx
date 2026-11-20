@@ -9,6 +9,7 @@ import { CategoryPage } from './components/Catalog';
 import { Header } from './components/Header';
 import { Footer, HomePage } from './components/Home';
 import { ProductSheet } from './components/ProductSheet';
+import { PromoSheet } from './components/Promo';
 import { SearchOverlay } from './components/SearchOverlay';
 import { SelectionBar, SelectionDrawer } from './components/Selection';
 import { Loader, Toasts } from './components/ui';
@@ -65,11 +66,13 @@ export function App({ load, base, dirty }: AppProps) {
         if (next) navigate(next);
       },
       closeProduct: () => closeTo({ ...current(), productUid: null }),
-      openSearch: () => navigate({ ...current(), productUid: null, selection: false, search: current().search ?? '' }),
+      openSearch: () => navigate({ ...current(), productUid: null, selection: false, promo: null, search: current().search ?? '' }),
       setSearch: (query) => navigate({ ...current(), search: query }, true),
       closeSearch: () => closeTo({ ...current(), search: null }),
-      openSelection: () => navigate({ ...current(), productUid: null, search: null, selection: true }),
+      openSelection: () => navigate({ ...current(), productUid: null, search: null, promo: null, selection: true }),
       closeSelection: () => closeTo({ ...current(), selection: false }),
+      openPromo: (id) => navigate({ ...current(), productUid: null, search: null, selection: false, promo: id }),
+      closePromo: () => closeTo({ ...current(), promo: null }),
       href: (partial) => viewToUrl({ ...HOME, ...partial }, data(), base),
       productHref: (uid) => viewToUrl(productView(uid) ?? HOME, data(), base),
     };
@@ -77,6 +80,7 @@ export function App({ load, base, dirty }: AppProps) {
 
   const macro = catalog?.macros.find((m) => m.id === view.macroId);
   const entry = catalog && view.productUid ? indexCatalog(catalog).byUid.get(view.productUid) : undefined;
+  const promo = catalog?.promos.find((p) => p.id === view.promo);
 
   // la home riparte sempre dall'alto (la pagina categoria gestisce da se' il proprio scorrimento)
   useEffect(() => {
@@ -85,8 +89,9 @@ export function App({ load, base, dirty }: AppProps) {
 
   useEffect(() => {
     const title = catalog?.title || "SICILIA D'ASSAPURARI";
-    document.title = entry ? `${entry.product.name} · ${title}` : macro ? `${macro.name} · ${title}` : title;
-  }, [catalog?.title, macro, entry]);
+    const page = entry?.product.name ?? (promo?.title || macro?.name);
+    document.title = page ? `${page} · ${title}` : title;
+  }, [catalog?.title, macro, entry, promo]);
 
   return (
     <NavContext.Provider value={nav}>
@@ -101,7 +106,8 @@ export function App({ load, base, dirty }: AppProps) {
           <ProductSheet entry={entry} />
           {view.search !== null && <SearchOverlay catalog={catalog} initialQuery={view.search} />}
           {!admin && view.selection && <SelectionDrawer catalog={catalog} />}
-          {!admin && !entry && view.search === null && !view.selection && <SelectionBar catalog={catalog} />}
+          {promo && <PromoSheet key={promo.id} promo={promo} />}
+          {!admin && !entry && !promo && view.search === null && !view.selection && <SelectionBar catalog={catalog} />}
         </>
       )}
       <Toasts />

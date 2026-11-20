@@ -1,7 +1,7 @@
 // Contratto tra i componenti condivisi e l'admin. Nel sito pubblico il contesto e' null,
 // quindi i controlli di modifica non vengono renderizzati e il loro codice non viene caricato.
 import { createContext, useContext } from 'react';
-import type { Catalog, Macro, Product } from '../types';
+import type { Catalog, Macro, Product, Promo } from '../types';
 
 export interface AdminApi {
   /** Impostazioni generali: nome del catalogo e numero WhatsApp per le richieste. */
@@ -37,6 +37,11 @@ export interface AdminApi {
   removeImage(uid: string, index: number): void;
   toggleImageMode(uid: string, index: number): void;
   clearImages(uid: string): void;
+
+  /** Nuova promo in bozza: restituisce il codice. */
+  addPromo(): string;
+  updatePromo(id: string, patch: Partial<Promo>): void;
+  deletePromo(id: string): Promise<boolean>;
 }
 
 export const AdminContext = createContext<AdminApi | null>(null);

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type HTMLAttributes } from 'react';
 import {
-  faBold, faEraser, faItalic, faListOl, faListUl, faUnderline,
+  faBold, faDropletSlash, faEraser, faItalic, faListOl, faListUl, faUnderline,
 } from '@fortawesome/free-solid-svg-icons';
 import { sanitizeHtml } from '../lib/sanitize';
 import { Icon } from './Icon';
@@ -107,7 +107,20 @@ export function RichText({ value, onChange }: { value: string; onChange?: (value
     document.execCommand(command, false, arg);
     onChange(editor.innerHTML);
   };
-  const keepFocus = (e: React.PointerEvent) => e.preventDefault();
+  // toglie il colore scelto dalla selezione: il testo torna al colore del tema
+  const resetColor = () => {
+    const editor = wrapRef.current?.querySelector<HTMLElement>('.rte-content');
+    const range = rangeRef.current;
+    if (!editor || !range) return;
+    editor.querySelectorAll<HTMLElement>('font[color],[style*="color"]').forEach((el) => {
+      if (!range.intersectsNode(el)) return;
+      el.removeAttribute('color');
+      el.style.removeProperty('color');
+      if (!el.getAttribute('style')) el.removeAttribute('style');
+    });
+    onChange(editor.innerHTML);
+  };
+  const keepFocus =(e: React.PointerEvent) => e.preventDefault();
   const button = (command: string, title: string, icon: typeof faBold) => (
     <button type="button" className="rte-btn" title={title} aria-label={title} onPointerDown={keepFocus} onClick={() => exec(command)}>
       <Icon icon={icon} />
@@ -129,6 +142,10 @@ export function RichText({ value, onChange }: { value: string; onChange?: (value
           </select>
           <input type="color" className="rte-color-picker" title="Colore testo" aria-label="Colore testo"
             onChange={(e) => exec('foreColor', e.target.value)} />
+          <button type="button" className="rte-btn" title="Colore predefinito" aria-label="Colore predefinito"
+            onPointerDown={keepFocus} onClick={resetColor}>
+            <Icon icon={faDropletSlash} />
+          </button>
           <div className="rte-separator" />
           {button('insertUnorderedList', 'Elenco', faListUl)}
           {button('insertOrderedList', 'Elenco numerato', faListOl)}

@@ -1,6 +1,6 @@
 // Caricamento, normalizzazione, serializzazione, slug e ricerca del catalogo.
 // Nessuna dipendenza dal DOM: testato con `npm test`.
-import type { Catalog, Macro, Product, Sub, TechRow } from '../types';
+import type { Catalog, Macro, Product, Promo, PromoSlot, Sub, TechRow } from '../types';
 
 type Json = Record<string, any>;
 
@@ -77,16 +77,48 @@ function normalizeMacro(entry: Json, file?: Json): Macro {
   };
 }
 
+const int = (value: unknown, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(value)) || 0));
+
+// campi facoltativi solo se usati: una promo salvata e riletta resta identica
+export function normalizePromo(raw: Json): Promo {
+  const { end, draft, ...rest } = raw || {};
+  return {
+    ...rest,
+    id: str(rest.id),
+    title: str(rest.title),
+    desc: str(rest.desc),
+    discount: int(rest.discount, 0, 99),
+    slots: list(rest.slots).map((raw): PromoSlot => {
+      const { free, ...slot } = raw || {};
+      return {
+        ...slot,
+        label: str(slot.label),
+        qty: int(slot.qty, 1, 99),
+        ids: (Array.isArray(slot.ids) ? slot.ids : []).filter((id: unknown): id is string => typeof id === 'string'),
+        ...(free === true && { free: true }),
+      };
+    }),
+    ...(typeof end === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(end) && { end }),
+    ...(draft === true && { draft: true }),
+  };
+}
+
+/** Codici salvati invariati; mancanti, non validi o doppi -> derivati da `seed`. */
+function fixIds<T extends { id: string }>(items: T[], seed: (item: T) => string) {
+  const taken = new Set<string>();
+  for (const item of items) {
+    if (VALID_ID.test(item.id) && !taken.has(item.id)) taken.add(item.id);
+    else item.id = productId(taken, seed(item));
+  }
+}
+
 /** Da config.json (+ file categoria) oppure dalla risposta di /api/catalog (dati già incorporati). */
 export function buildCatalog(config: Json, files?: Json[]): Catalog {
   const macros = list(config?.macroCategories).map((m, i) => normalizeMacro(m, files?.[i]));
-  // codici salvati invariati; mancanti, non validi o doppi -> derivati dal nome
-  const taken = new Set<string>();
-  for (const p of macros.flatMap((m) => m.products)) {
-    if (VALID_ID.test(p.id) && !taken.has(p.id)) taken.add(p.id);
-    else p.id = productId(taken, `${p.brand} ${p.name}`);
-  }
-  return { title: str(config?.title), tagline: str(config?.tagline), whatsapp: str(config?.whatsapp), macros };
+  fixIds(macros.flatMap((m) => m.products), (p) => `${p.brand} ${p.name}`);
+  const promos = list(config?.promos).map(normalizePromo);
+  fixIds(promos, (p) => p.title);
+  return { title: str(config?.title), tagline: str(config?.tagline), whatsapp: str(config?.whatsapp), promos, macros };
 }
 
 /* ---------- Caricamento ---------- */
@@ -132,9 +164,11 @@ export function serializeCatalog(catalog: Catalog): Map<string, string> {
       products: m.products.map(({ uid: _uid, ...p }) => p),
     }, null, 2));
   }
-  // tagline e whatsapp solo se impostati: un config senza di essi resta identico
-  const { title, tagline, whatsapp } = catalog;
-  files.set(CONFIG_FILE, JSON.stringify({ title, ...(tagline && { tagline }), ...(whatsapp && { whatsapp }), macroCategories }, null, 2));
+  // tagline, whatsapp e promo solo se impostati: un config senza di essi resta identico
+  const { title, tagline, whatsapp, promos } = catalog;
+  files.set(CONFIG_FILE, JSON.stringify({
+    title, ...(tagline && { tagline }), ...(whatsapp && { whatsapp }), ...(promos.length ? { promos } : {}), macroCategories,
+  }, null, 2));
   return files;
 }
 
@@ -239,6 +273,25 @@ export function indexCatalog(catalog: Catalog): CatalogIndex {
 export function productFromParam(index: CatalogIndex, param: string): ProductRef | undefined {
   return index.byId.get(param.slice(param.lastIndexOf('-') + 1)) ?? index.byLegacySlug.get(param);
 }
+
+/* ---------- Promozioni ---------- */
+
+/** Data locale "AAAA-MM-GG" (confrontabile come stringa con Promo.end). */
+export const today = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Visibile ai clienti: non in bozza, non scaduta e con prodotti in ogni scelta. */
+export const isPromoLive = (promo: Promo, day = today()) =>
+  !promo.draft && (!promo.end || promo.end >= day) && promo.slots.length > 0 && promo.slots.every((s) => s.ids.length > 0);
+
+/** Parametro ?promo= ("titolo-codice"): conta il codice dopo l'ultimo "-". */
+export const promoParam = (promo: Promo) => `${slugify(promo.title)}-${promo.id}`;
+export const promoFromParam = (catalog: Catalog, param: string) =>
+  catalog.promos.find((p) => p.id === param.slice(param.lastIndexOf('-') + 1));
+
+/** Promo attive che includono il prodotto. */
+export const promosOf = (catalog: Catalog, productId: string) =>
+  catalog.promos.filter((p) => isPromoLive(p) && p.slots.some((s) => s.ids.includes(productId)));
 
 export interface SearchGroup {
   macro: Macro;

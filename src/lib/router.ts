@@ -1,9 +1,10 @@
 // Navigazione con URL condivisibili:
 //   /<macro>/<sotto>  categoria   ?p=<prodotto> scheda   ?q=<testo> ricerca   ?selezione  richiesta d'ordine
-// Il pulsante "indietro" del browser/Android chiude scheda, ricerca e selezione.
+//   ?promo=<titolo-codice>  pack promo
+// Il pulsante "indietro" del browser/Android chiude scheda, ricerca, selezione e promo.
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Catalog } from '../types';
-import { indexCatalog, productFromParam } from './catalog';
+import { indexCatalog, productFromParam, promoFromParam, promoParam } from './catalog';
 import { catalogStore } from './store';
 
 export interface View {
@@ -12,9 +13,11 @@ export interface View {
   productUid: string | null;
   search: string | null;
   selection: boolean;
+  /** Codice della promo aperta. */
+  promo: string | null;
 }
 
-export const HOME: View = { macroId: null, subId: null, productUid: null, search: null, selection: false };
+export const HOME: View = { macroId: null, subId: null, productUid: null, search: null, selection: false, promo: null };
 
 export function viewToUrl(view: View, catalog: Catalog, base: string): string {
   const index = indexCatalog(catalog);
@@ -30,6 +33,8 @@ export function viewToUrl(view: View, catalog: Catalog, base: string): string {
   if (productSlug) params.set('p', productSlug);
   if (view.search !== null) params.set('q', view.search);
   if (view.selection) params.set('selezione', '');
+  const promo = view.promo && catalog.promos.find((p) => p.id === view.promo);
+  if (promo) params.set('promo', promoParam(promo));
   const query = params.toString();
   return query ? `${path}?${query}` : path;
 }
@@ -49,6 +54,7 @@ export function urlToView(catalog: Catalog, base: string): View {
     productUid: product?.product.uid ?? null,
     search: params.get('q'),
     selection: params.has('selezione'),
+    promo: promoFromParam(catalog, params.get('promo') || '')?.id ?? null,
   };
 }
 
@@ -94,6 +100,8 @@ export interface Nav {
   closeSearch(): void;
   openSelection(): void;
   closeSelection(): void;
+  openPromo(id: string): void;
+  closePromo(): void;
   href(view: Partial<View>): string;
   productHref(uid: string): string;
 }

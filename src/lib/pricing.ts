@@ -3,7 +3,7 @@
 //   discount: 20                         -> prodotto scontato del 20%
 //   packs: [{ qty: 10, discount: 10 }]   -> 10 pezzi, somma dei prezzi scontata del 10%
 // Lo sconto del pack si applica al prezzo unitario gia' scontato.
-import type { Pack, Product } from '../types';
+import type { Pack, Product, Promo } from '../types';
 
 /** "€ 35.00" | "€ 7,50" | "€ 1.234,50" -> numero; null se non interpretabile. */
 export function parsePrice(text: string): number | null {
@@ -119,4 +119,48 @@ export function lineQuote(product: Product, qty: number): LineQuote {
   const packs = [...counts].map(([i, count]) => ({ qty: offers[i].qty, discount: offers[i].discount, count }))
     .sort((a, b) => b.qty - a.qty);
   return { qty, list: round2(base * qty), total: best[qty] / 100, packs };
+}
+
+export interface BundleQuote {
+  /** Valore dei pezzi a prezzo pieno, omaggi inclusi. */
+  list: number | null;
+  /** Prezzo di un pack. */
+  total: number | null;
+  /** Valore dei pezzi in omaggio. */
+  gifts: number;
+}
+
+/**
+ * Pack promo: i pezzi a pagamento (al prezzo gia' scontato del prodotto, come per i pack) meno lo sconto promo;
+ * gli omaggi costano 0. `picks[i]` sono i prodotti scelti per la scelta i.
+ */
+export function bundleQuote(promo: Pick<Promo, 'discount' | 'slots'>, picks: Product[][]): BundleQuote {
+  let list = 0;
+  let paid = 0;
+  let gifts = 0;
+  for (const [i, slot] of promo.slots.entries()) {
+    for (const product of picks[i] ?? []) {
+      const { base, final } = priceInfo(product);
+      if (base === null || final === null) {
+        if (slot.free) continue;
+        return { list: null, total: null, gifts: 0 };
+      }
+      list += base;
+      if (slot.free) gifts += base;
+      else paid += final;
+    }
+  }
+  return { list: round2(list), total: applyDiscount(paid, percent(promo.discount)), gifts: round2(gifts) };
+}
+
+/** Prezzo "a partire da": i prodotti piu' economici di ogni scelta (null se una scelta non ha prezzi). */
+export function bundleFrom(promo: Pick<Promo, 'discount' | 'slots'>, products: (ids: string[]) => Product[]): BundleQuote {
+  const picks = promo.slots.map((slot) => {
+    const priced = products(slot.ids).filter((p) => priceInfo(p).final !== null);
+    const key = (p: Product) => (slot.free ? priceInfo(p).base! : priceInfo(p).final!);
+    const cheapest = priced.reduce<Product | null>((best, p) => (!best || key(p) < key(best) ? p : best), null);
+    return cheapest ? new Array<Product>(slot.qty).fill(cheapest) : [];
+  });
+  // un omaggio senza prezzo non cambia il totale
+  return picks.some((p, i) => !p.length && !promo.slots[i].free) ? { list: null, total: null, gifts: 0 } : bundleQuote(promo, picks);
 }

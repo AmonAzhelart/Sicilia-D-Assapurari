@@ -22,8 +22,11 @@ import { Editable, RichText } from './Editable';
 import { Icon } from './Icon';
 import { ImageViewer } from './ImageViewer';
 import { OffersEditor } from './Offers';
+import { PickedList, ProductPicker, PromoHint } from './Promo';
 import { packNote, Stepper } from './Selection';
 import { AdminIconButton, Media } from './ui';
+
+const NONE: string[] = [];
 
 export function ProductSheet({ entry }: { entry?: ProductRef }) {
   const nav = useNav();
@@ -94,13 +97,16 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
   const grew = product.images.length > imageCount.current;
   useEffect(() => { imageCount.current = product.images.length; });
 
-  // prima la stessa sottocategoria, poi il resto della categoria
+  // consigliati scelti dall'admin; in mancanza, prima la stessa sottocategoria, poi il resto della categoria
+  const chosen = Array.isArray(product.related) ? product.related : NONE;
   const related = useMemo(() => {
+    const picked = chosen.map((id) => index.byId.get(id)).filter((r): r is ProductRef => !!r && r.product.uid !== product.uid);
+    if (picked.length) return picked.slice(0, 8);
     const macro = index.byUid.get(product.uid)?.macro;
     const others = index.entries.filter((e) => e.macro === macro && e.product.uid !== product.uid);
     return [...others.filter((e) => e.product.categoryId === product.categoryId),
       ...others.filter((e) => e.product.categoryId !== product.categoryId)].slice(0, 4);
-  }, [index, product.uid, product.categoryId]);
+  }, [index, product.uid, product.categoryId, chosen]);
 
   // nel sito pubblico le sezioni vuote (o con il testo segnaposto) non vengono mostrate
   const hasDesc = !!admin || !isBlankHtml(product.desc);
@@ -162,6 +168,7 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
           )}
 
           {admin ? <OffersEditor product={product} /> : <PackPicker product={product} qty={qty} onSelect={setQty} />}
+          {!admin && <PromoHint product={product} />}
           {!admin && <InSelection id={product.id} />}
 
           {hasDesc && (
@@ -202,6 +209,20 @@ function ProductDetail({ product, onOpenViewer }: { product: Product; onOpenView
               <ul className="prow-list pd-rel">
                 {related.map(({ product: p }) => <li key={p.uid}><ProductRow product={p} /></li>)}
               </ul>
+            </Block>
+          )}
+          {admin && (
+            <Block title="Potrebbero piacerti" meta={chosen.length ? `${chosen.length} scelti` : 'automatici'} open>
+              <p className="promo-form-note">
+                Scegli i prodotti da consigliare, nell'ordine in cui vuoi mostrarli. Se non ne scegli nessuno
+                restano quelli automatici: prima la stessa sottocategoria, poi il resto della categoria.
+              </p>
+              <PickedList ids={chosen} onChange={(ids) => update({ related: ids.length ? ids : undefined })} />
+              <ProductPicker selected={chosen} exclude={product.id}
+                onToggle={(id) => {
+                  const ids = chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id];
+                  update({ related: ids.length ? ids : undefined });
+                }} />
             </Block>
           )}
         </div>

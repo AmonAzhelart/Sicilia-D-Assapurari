@@ -35,6 +35,8 @@ export interface Product {
   discount?: number;
   /** Opzionale: offerte pack. */
   packs?: Pack[];
+  /** Opzionale: codici dei prodotti consigliati ("Potrebbero piacerti"). Assente = scelti in automatico. */
+  related?: string[];
   [extra: string]: unknown;
 }
 
@@ -60,11 +62,40 @@ export interface Macro {
   [extra: string]: unknown;
 }
 
+/** Una scelta del pack promo: "1 panettone tra questi". */
+export interface PromoSlot {
+  label: string;
+  /** Pezzi da scegliere. */
+  qty: number;
+  /** Codici dei prodotti tra cui scegliere. */
+  ids: string[];
+  /** Pezzi in omaggio. Assente = a pagamento. */
+  free?: boolean;
+  [extra: string]: unknown;
+}
+
+/** Promozione "componi il tuo pack" (config.json -> promos). */
+export interface Promo {
+  id: string;
+  title: string;
+  desc: string;
+  /** Sconto percentuale sui pezzi a pagamento del pack. */
+  discount: number;
+  slots: PromoSlot[];
+  /** Ultimo giorno valido, "AAAA-MM-GG". Assente = senza scadenza. */
+  end?: string;
+  /** Bozza: visibile solo in admin. */
+  draft?: boolean;
+  [extra: string]: unknown;
+}
+
 export interface Catalog {
   title: string;
   /** Opzionale: frase sotto il titolo nella home. */
   tagline: string;
   /** Opzionale: numero WhatsApp per le richieste d'ordine (es. "+39 333 1234567"). */
   whatsapp: string;
+  /** Opzionale nel JSON: promozioni pack. */
+  promos: Promo[];
   macros: Macro[];
 }

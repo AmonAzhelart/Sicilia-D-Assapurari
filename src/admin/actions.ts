@@ -395,6 +395,34 @@ export const adminApi: AdminApi = {
       update((c) => mapProduct(c, uid, (p) => ({ ...p, images: [], imagesMode: [] })));
     }
   },
+
+  addPromo() {
+    const id = productId(new Set(getCatalog().promos.map((p) => p.id)));
+    update((c) => ({
+      ...c,
+      promos: [...c.promos, {
+        id, title: 'Nuova promozione', desc: '', discount: 10, draft: true,
+        slots: [{ label: 'Prodotto', qty: 1, ids: [] }, { label: 'Prodotto', qty: 1, ids: [] }],
+      }],
+    }));
+    return id;
+  },
+
+  updatePromo(id, patch) {
+    update((c) => ({ ...c, promos: c.promos.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
+  },
+
+  async deletePromo(id) {
+    const promo = getCatalog().promos.find((p) => p.id === id);
+    if (!promo || !(await confirm({
+      title: 'Elimina promozione',
+      message: `Eliminare "${promo.title}"? I pack già nelle selezioni dei clienti tornano prodotti singoli a prezzo normale.`,
+      danger: true,
+      confirm: 'Elimina',
+    }))) return false;
+    update((c) => ({ ...c, promos: c.promos.filter((p) => p.id !== id) }));
+    return true;
+  },
 };
 
 /* ---------- Caricamento e salvataggio ---------- */

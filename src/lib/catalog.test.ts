@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCatalog, serializeCatalog, indexCatalog, searchCatalog, macroFileName, isBlankHtml, slugify, keyFacts, productFromParam } from './catalog.ts';
+import {
+  buildCatalog, serializeCatalog, indexCatalog, searchCatalog, macroFileName, isBlankHtml, slugify, keyFacts, productFromParam,
+  isPromoLive, promoFromParam, promoParam, promosOf,
+} from './catalog.ts';
 
 const config = {
   title: "SICILIA D'ASSAPURARI",
@@ -102,4 +105,31 @@ test('dati chiave: riconosciuti dal nome della voce, in ordine di importanza', (
   assert.deepEqual(keyFacts(tech).map((r) => r.k), ['GRADAZIONE', 'FORMATO', 'UVAGGIO', 'DENOMINAZIONE']);
   assert.deepEqual(keyFacts([{ k: 'INGREDIENTE PRINCIPALE', v: 'Fico d\u2019India' }]).map((r) => r.k), ['INGREDIENTE PRINCIPALE']);
   assert.deepEqual(keyFacts([{ k: 'COLORE', v: 'Rosso' }]), []);
+});
+
+test('promozioni: salvate solo se presenti, rilette identiche, visibili solo se attive', () => {
+  const promo = {
+    id: 'natale1', title: 'Natale in tavola', desc: '', discount: 15, end: '2026-12-31',
+    slots: [{ label: 'Panettone', qty: 1, ids: ['aaa'] }, { label: 'Torrone', qty: 1, ids: ['bbb'], free: true }],
+  };
+  const saved = JSON.parse(serializeCatalog(buildCatalog({ ...config, promos: [promo] }, [vini])).get('config.json')!);
+  assert.deepEqual(Object.keys(saved), ['title', 'promos', 'macroCategories']);
+  assert.deepEqual(saved.promos, [promo]); // nessun campo aggiunto (free/draft solo se veri)
+
+  // valori sporchi nel JSON: normalizzati, codice doppio sostituito
+  const [a, b] = buildCatalog({ ...config, promos: [{ ...promo, discount: '150', end: 'domani', slots: [{ qty: 0, ids: ['x', 3] }] }, promo] }).promos;
+  assert.deepEqual([a.discount, a.end, a.slots[0].qty, a.slots[0].ids, a.slots[0].label], [99, undefined, 1, ['x'], '']);
+  assert.notEqual(b.id, a.id);
+
+  const catalog = buildCatalog({ ...config, promos: [promo] }, [vini]);
+  const p = catalog.promos[0];
+  assert.equal(isPromoLive(p, '2026-12-31'), true);
+  assert.equal(isPromoLive(p, '2027-01-01'), false); // scaduta
+  assert.equal(isPromoLive({ ...p, draft: true }, '2026-12-01'), false); // bozza
+  assert.equal(isPromoLive({ ...p, slots: [{ label: 'x', qty: 1, ids: [] }] }, '2026-12-01'), false); // scelta vuota
+  assert.equal(promoParam(p), 'natale-in-tavola-natale1');
+  assert.equal(promoFromParam(catalog, 'titolo-cambiato-natale1'), p); // conta solo il codice
+  assert.equal(promoFromParam(catalog, 'natale1'), p);
+  assert.equal(promosOf({ ...catalog, promos: [{ ...p, end: undefined }] }, 'aaa').length, 1);
+  assert.equal(promosOf({ ...catalog, promos: [{ ...p, end: undefined }] }, 'zzz').length, 0);
 });

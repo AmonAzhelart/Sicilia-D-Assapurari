@@ -2,11 +2,11 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type React
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import {
   faArrowDown, faArrowRightArrowLeft, faArrowUp, faCamera, faCheck, faCopy, faGripVertical, faPaste, faPlus,
-  faRightLeft, faTag, faTruckFast, faXmark,
+  faGift, faRightLeft, faTag, faTruckFast, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Product, Sub } from '../types';
 import { useAdmin } from '../lib/admin';
-import { fold } from '../lib/catalog';
+import { fold, promosOf } from '../lib/catalog';
 import { cx, scrollToSection } from '../lib/hooks';
 import { addToSelection, selectionStore } from '../lib/personal';
 import { formatPrice, packOffers, priceInfo, type PackOffer } from '../lib/pricing';
@@ -16,6 +16,7 @@ import { catalogStore, sectionStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
 import { Editable } from './Editable';
 import { Icon } from './Icon';
+import { PromoBanner } from './Promo';
 import { AdminIconButton, LinkBox, Media } from './ui';
 
 /* ---------- Hero di categoria ---------- */
@@ -146,6 +147,7 @@ export function CategoryPage({ macro, initialSubId }: { macro: Macro; initialSub
       <Hero macro={macro} />
       <ShippingBanner />
       <main className="container category-main">
+        {!admin && <PromoBanner catalog={catalogStore.get()!} macro={macro} />}
         {!admin && macro.products.length > 0 && (
           <CatalogToolbar macro={macro} filters={filters} total={total} onChange={setFilters} />
         )}
@@ -295,6 +297,7 @@ export const ProductCard = memo(function ProductCard({ product, eager = false, c
     (best, o) => (o.perUnit !== null && (!best || o.perUnit < best.perUnit!) ? o : best), null);
   const label = [product.brand, product.name, price.label].filter(Boolean).join(' – ');
   const open = () => nav.openProduct(product.uid);
+  const promo = promosOf(catalogStore.get()!, product.id)[0];
 
   const body = (
     <>
@@ -311,6 +314,7 @@ export const ProductCard = memo(function ProductCard({ product, eager = false, c
             <strong>{price.label}</strong>
             {price.discount > 0 && <s>{product.price}</s>}
             {bestPack && <small>Pack {bestPack.qty} · {formatPrice(bestPack.perUnit!, product.price)} cad.</small>}
+            {promo && <small className="pcard-promo"><Icon icon={faGift} /> {promo.title}</small>}
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { faImage } from '@fortawesome/free-regular-svg-icons';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 import { faArrowDown, faArrowRight, faBagShopping, faCamera, faTruckFast } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro } from '../types';
-import { indexCatalog, productFromParam, splitTitle, type ProductRef } from '../lib/catalog';
+import { indexCatalog, isPromoLive, productFromParam, splitTitle, type ProductRef } from '../lib/catalog';
 import { useAdmin } from '../lib/admin';
 import { cx, useReveal } from '../lib/hooks';
 import { recentStore } from '../lib/personal';
@@ -13,6 +13,7 @@ import { useStore } from '../lib/store';
 import { ProductCard } from './Catalog';
 import { Editable } from './Editable';
 import { Icon } from './Icon';
+import { PromoShowcase } from './Promo';
 import { AdminIconButton, LinkBox, ScrollRow } from './ui';
 
 export const DEFAULT_TAGLINE = 'Il meglio della Sicilia, dalla terra alla tavola';
@@ -43,9 +44,10 @@ export function HomePage({ catalog }: { catalog: Catalog }) {
 
   return (
     <main ref={ref} className="home">
-      <HomeHero catalog={catalog} hasOffers={offers.length > 0}
-        onExplore={() => scrollTo('categorie')} onOffers={() => scrollTo('offerte')} />
+      <HomeHero catalog={catalog} hasOffers={offers.length > 0} hasPromos={catalog.promos.some((p) => isPromoLive(p))}
+        onExplore={() => scrollTo('categorie')} onOffers={() => scrollTo('offerte')} onPromos={() => scrollTo('promo')} />
       <Stats catalog={catalog} />
+      <PromoShowcase catalog={catalog} />
       <CategoryGrid macros={catalog.macros} />
       <ProductRail id="offerte" kicker="Occasioni" title="In offerta" items={offers} />
       <ProductRail id="recenti" kicker="Per te" title="Visti di recente" items={recent} />
@@ -53,8 +55,8 @@ export function HomePage({ catalog }: { catalog: Catalog }) {
   );
 }
 
-function HomeHero({ catalog, hasOffers, onExplore, onOffers }: {
-  catalog: Catalog; hasOffers: boolean; onExplore: () => void; onOffers: () => void;
+function HomeHero({ catalog, hasOffers, hasPromos, onExplore, onOffers, onPromos }: {
+  catalog: Catalog; hasOffers: boolean; hasPromos: boolean; onExplore: () => void; onOffers: () => void; onPromos: () => void;
 }) {
   const admin = useAdmin();
   const cover = catalog.macros.find((m) => m.heroImage || m.bgImage);
@@ -73,7 +75,9 @@ function HomeHero({ catalog, hasOffers, onExplore, onOffers }: {
           <button type="button" className="hero-cta primary" onClick={onExplore}>
             Esplora il catalogo <Icon icon={faArrowDown} />
           </button>
-          {hasOffers && <button type="button" className="hero-cta" onClick={onOffers}>Le offerte</button>}
+          {hasPromos
+            ? <button type="button" className="hero-cta" onClick={onPromos}>Le promozioni</button>
+            : hasOffers && <button type="button" className="hero-cta" onClick={onOffers}>Le offerte</button>}
         </div>
       </div>
       <button type="button" className="home-hero-scroll" onClick={onExplore} aria-label="Scorri alle categorie"><span /></button>

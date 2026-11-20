@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPrice, lineQuote, packOffers, parsePrice, priceInfo } from './pricing.ts';
+import { bundleFrom, bundleQuote, formatPrice, lineQuote, packOffers, parsePrice, priceInfo } from './pricing.ts';
 import type { Product } from '../types';
 
 const product = (fields: Partial<Product>): Product => ({
@@ -53,4 +53,35 @@ test('quantita\': miglior combinazione di pack', () => {
   const onSale = lineQuote(product({ price: '€ 10.00', discount: 20 }), 2);
   assert.deepEqual([onSale.list, onSale.total], [20, 16]);
   assert.equal(lineQuote(product({ price: 'su richiesta' }), 2).total, null);
+});
+
+test('pack promo: sconto sui pezzi a pagamento, omaggi gratis, "a partire da"', () => {
+  const panettone = product({ id: 'pa', price: '€ 30.00' });
+  const panettoneScontato = product({ id: 'pb', price: '€ 40.00', discount: 25 }); // 30
+  const spumante = product({ id: 'sp', price: '€ 20,00' });
+  const torrone = product({ id: 'to', price: '€ 8.00' });
+  const promo = {
+    discount: 10,
+    slots: [
+      { label: 'Panettone', qty: 1, ids: ['pa', 'pb'] },
+      { label: 'Spumante', qty: 1, ids: ['sp'] },
+      { label: 'Torrone', qty: 1, ids: ['to'], free: true },
+    ],
+  };
+  // (30 + 20) -10% = 45; valore pieno 30+20+8 = 58
+  assert.deepEqual(bundleQuote(promo, [[panettone], [spumante], [torrone]]), { list: 58, total: 45, gifts: 8 });
+  // lo sconto promo si somma a quello del prodotto: (30 + 20) -10%, valore pieno 40+20+8
+  assert.deepEqual(bundleQuote(promo, [[panettoneScontato], [spumante], [torrone]]), { list: 68, total: 45, gifts: 8 });
+  // scelte incomplete: totale parziale
+  assert.equal(bundleQuote(promo, [[panettone], [], []]).total, 27);
+  // pezzo a pagamento senza prezzo -> su richiesta; omaggio senza prezzo -> ignorato
+  assert.equal(bundleQuote(promo, [[product({ price: 'su richiesta' })], [spumante], []]).total, null);
+  assert.equal(bundleQuote(promo, [[panettone], [spumante], [product({ price: '' })]]).total, 45);
+
+  const byId = new Map([panettone, panettoneScontato, spumante, torrone].map((p) => [p.id, p]));
+  const from = bundleFrom(promo, (ids) => ids.map((id) => byId.get(id)!).filter(Boolean));
+  assert.equal(from.total, 45);
+  assert.equal(bundleFrom({ ...promo, slots: [{ label: 'x', qty: 2, ids: ['sp'] }] }, (ids) => ids.map((id) => byId.get(id)!)).total, 36);
+  assert.equal(bundleFrom({ ...promo, slots: [{ label: 'x', qty: 1, ids: [] }] }, () => []).total, null);
+  assert.equal(bundleFrom({ ...promo, slots: [promo.slots[1], { label: 'x', qty: 1, ids: [], free: true }] }, (ids) => ids.map((id) => byId.get(id)!)).total, 18);
 });

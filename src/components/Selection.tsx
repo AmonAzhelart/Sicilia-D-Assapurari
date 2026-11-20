@@ -1,16 +1,18 @@
-// "La tua selezione": il cliente sceglie quantita' e pack, vede il totale con i risparmi
+// "La tua selezione": il cliente sceglie quantita', pack e pack promo, vede il totale con i risparmi
 // e invia la richiesta d'ordine su WhatsApp (o la condivide/copia se il numero non e' impostato).
 import { useEffect, useMemo } from 'react';
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons';
 import {
-  faArrowRight, faBagShopping, faMinus, faPaperPlane, faPlus, faTrash, faXmark,
+  faArrowRight, faBagShopping, faGift, faMinus, faPaperPlane, faPlus, faTrash, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
-import type { Catalog } from '../types';
-import { indexCatalog, productFromParam, type ProductRef } from '../lib/catalog';
+import type { Catalog, Promo } from '../types';
+import { indexCatalog, isPromoLive, productFromParam, type ProductRef } from '../lib/catalog';
 import { useEscape, useScrollLock } from '../lib/hooks';
-import { clearSelection, selectionStore, setQuantity } from '../lib/personal';
-import { formatPrice, lineQuote, priceInfo, type LineQuote } from '../lib/pricing';
+import {
+  addToSelection, bundleKey, bundleStore, clearSelection, selectionStore, setBundleQuantity, setQuantity, type BundleItem,
+} from '../lib/personal';
+import { bundleQuote, formatPrice, lineQuote, priceInfo, type BundleQuote, type LineQuote } from '../lib/pricing';
 import { useNav } from '../lib/router';
 import { useStore } from '../lib/store';
 import { toast } from '../lib/toast';
@@ -26,8 +28,19 @@ interface Line extends ProductRef {
   quote: LineQuote;
 }
 
+interface BundleLine {
+  key: string;
+  item: BundleItem;
+  promo: Promo;
+  /** Prodotti scelti, per ogni scelta della promo. */
+  refs: ProductRef[][];
+  /** Prezzo di un pack. */
+  quote: BundleQuote;
+}
+
 export function useSelectionSummary(catalog: Catalog) {
   const items = useStore(selectionStore);
+  const bundleItems = useStore(bundleStore);
   return useMemo(() => {
     const index = indexCatalog(catalog);
     const lines: Line[] = [];
@@ -35,15 +48,35 @@ export function useSelectionSummary(catalog: Catalog) {
       const ref = productFromParam(index, key);
       if (ref) lines.push({ ...ref, key, quote: lineQuote(ref.product, qty) });
     }
+    // pack promo validi; quelli di promo finite o cambiate tornano prodotti singoli (vedi SelectionBar)
+    const bundles: BundleLine[] = [];
+    const invalid: BundleItem[] = [];
+    for (const item of bundleItems) {
+      const promo = catalog.promos.find((p) => p.id === item.promo);
+      const valid = !!promo && isPromoLive(promo) && promo.slots.length === item.picks.length
+        && promo.slots.every((s, i) => item.picks[i].length === s.qty && item.picks[i].every((id) => s.ids.includes(id) && index.byId.has(id)));
+      if (!valid) {
+        invalid.push(item);
+        continue;
+      }
+      const refs = item.picks.map((ids) => ids.map((id) => index.byId.get(id)!));
+      bundles.push({ key: bundleKey(item), item, promo, refs, quote: bundleQuote(promo, refs.map((r) => r.map((x) => x.product))) });
+    }
     const priced = lines.filter((l) => l.quote.total !== null);
-    const total = priced.reduce((n, l) => n + l.quote.total!, 0);
-    const list = priced.reduce((n, l) => n + l.quote.list!, 0);
-    const pieces = lines.reduce((n, l) => n + l.quote.qty, 0);
+    const pricedBundles = bundles.filter((b) => b.quote.total !== null);
+    const total = priced.reduce((n, l) => n + l.quote.total!, 0) + pricedBundles.reduce((n, b) => n + b.quote.total! * b.item.qty, 0);
+    const list = priced.reduce((n, l) => n + l.quote.list!, 0) + pricedBundles.reduce((n, b) => n + b.quote.list! * b.item.qty, 0);
+    const pieces = lines.reduce((n, l) => n + l.quote.qty, 0) + bundles.reduce((n, b) => n + b.item.picks.flat().length * b.item.qty, 0);
     // i totali usano lo stesso formato (virgola o punto) dei prezzi in catalogo
-    const like = lines[0]?.product.price ?? '€ 0,00';
-    return { lines, total, savings: Math.max(0, list - total), pieces, unpriced: lines.length - priced.length, like };
-  }, [catalog, items]);
+    const like = lines[0]?.product.price ?? bundles[0]?.refs[0]?.[0]?.product.price ?? '€ 0,00';
+    const unpriced = lines.length - priced.length + bundles.length - pricedBundles.length;
+    return { lines, bundles, invalid, total, savings: Math.max(0, list - total), pieces, unpriced, like };
+  }, [catalog, items, bundleItems]);
 }
+
+/** Prodotti di una scelta del pack, con i doppioni raggruppati: "2 × Brut". */
+const grouped = (refs: ProductRef[]) =>
+  [...new Set(refs)].map((ref) => ({ product: ref.product, count: refs.filter((r) => r === ref).length }));
 
 export function packNote(quote: LineQuote) {
   return quote.packs.map((p) => `pack da ${p.qty}${p.count > 1 ? ` ×${p.count}` : ''}`).join(' + ');
@@ -76,6 +109,15 @@ function buildMessage(catalog: Catalog, summary: ReturnType<typeof useSelectionS
     const price = quote.total !== null ? formatPrice(quote.total, product.price) : 'prezzo su richiesta';
     return `• ${quote.qty} × ${name}${packs}: ${price}`;
   });
+  for (const { promo, refs, quote, item } of summary.bundles) {
+    const like = refs[0]?.[0]?.product.price ?? '';
+    const price = quote.total !== null ? formatPrice(quote.total * item.qty, like) : 'prezzo su richiesta';
+    rows.push(`• ${item.qty} × Pack «${promo.title}»${promo.discount ? ` (-${promo.discount}%)` : ''}: ${price}`);
+    promo.slots.forEach((slot, i) => grouped(refs[i]).forEach(({ product, count }) => {
+      const name = [product.name, product.brand].filter(Boolean).join(' – ');
+      rows.push(`   – ${slot.free ? 'Omaggio: ' : ''}${count > 1 ? `${count} × ` : ''}${name}`);
+    }));
+  }
   return [
     `Buongiorno! Vorrei richiedere questi prodotti dal catalogo ${catalog.title || "Sicilia D'Assapurari"}:`,
     '',
@@ -122,9 +164,10 @@ export function SelectionDrawer({ catalog }: { catalog: Catalog }) {
           </button>
         </div>
 
-        {summary.lines.length ? (
+        {summary.lines.length || summary.bundles.length ? (
           <>
             <div className="drawer-list">
+              {summary.bundles.map((line) => <BundleLineView key={line.key} line={line} />)}
               {summary.lines.map((line) => <SelectionLine key={line.key} line={line} />)}
             </div>
             <div className="drawer-foot">
@@ -191,10 +234,53 @@ function SelectionLine({ line }: { line: Line }) {
   );
 }
 
+function BundleLineView({ line }: { line: BundleLine }) {
+  const nav = useNav();
+  const { promo, refs, quote, item, key } = line;
+  const first = refs.flat()[0]?.product;
+  const like = first?.price ?? '';
+  const saving = quote.list !== null && quote.total !== null ? quote.list - quote.total : 0;
+  return (
+    <div className="sel-line is-bundle">
+      <button type="button" className="sel-thumb" onClick={() => nav.openPromo(promo.id)} aria-label={`Apri la promozione ${promo.title}`}>
+        <Media className="sel-media" imgClassName="sel-img" src={first?.images[0] || ''} mode={first?.imagesMode[0]}
+          variant="search" alt="" placeholder={<div className="mini-no-img"><Icon icon={faImage} /></div>} />
+        <span className="sel-bundle-badge"><Icon icon={faGift} /></span>
+      </button>
+      <div className="sel-info">
+        <div className="sel-brand">Pack promo{promo.discount ? ` · -${promo.discount}%` : ''}</div>
+        <button type="button" className="sel-name" onClick={() => nav.openPromo(promo.id)}>{promo.title}</button>
+        <ul className="sel-bundle-items">
+          {promo.slots.flatMap((slot, i) => grouped(refs[i]).map(({ product, count }) => (
+            <li key={`${i}-${product.id}`}>{slot.free && <em>Omaggio</em>}{count > 1 && `${count} × `}{product.name}</li>
+          )))}
+        </ul>
+        <div className="sel-controls">
+          <Stepper value={item.qty} onChange={(n) => setBundleQuantity(key, n)} />
+          <div className="sel-total">
+            {saving > 0.004 && <s>{formatPrice(quote.list! * item.qty, like)}</s>}
+            <strong>{quote.total !== null ? formatPrice(quote.total * item.qty, like) : 'Su richiesta'}</strong>
+          </div>
+        </div>
+      </div>
+      <button type="button" className="sel-remove" onClick={() => setBundleQuantity(key, 0)} aria-label={`Rimuovi il pack ${promo.title}`}>
+        <Icon icon={faTrash} />
+      </button>
+    </div>
+  );
+}
+
 /** Barra flottante su mobile: riepilogo sempre a portata di pollice. */
 export function SelectionBar({ catalog }: { catalog: Catalog }) {
   const nav = useNav();
-  const { pieces, total, like, lines } = useSelectionSummary(catalog);
+  const { pieces, total, like, lines, invalid } = useSelectionSummary(catalog);
+  // pack di promo finite o cambiate: i prodotti restano nella selezione, a prezzo normale
+  useEffect(() => {
+    if (!invalid.length) return;
+    bundleStore.set((list) => list.filter((b) => !invalid.includes(b)));
+    for (const b of invalid) for (const id of b.picks.flat()) addToSelection(id, b.qty);
+    toast('Una promozione è terminata: i suoi prodotti restano nella selezione a prezzo normale.', 'info');
+  }, [invalid]);
   // selezione riallineata ai codici prodotto: via i prodotti tolti dal catalogo, vecchi slug convertiti
   const items = useStore(selectionStore);
   useEffect(() => {

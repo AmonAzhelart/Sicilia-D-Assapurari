@@ -5,7 +5,7 @@ import type { Catalog, Macro } from '../types';
 import { splitTitle } from '../lib/catalog';
 import { cx, useScrolledHeader } from '../lib/hooks';
 import { useAdmin } from '../lib/admin';
-import { selectionStore } from '../lib/personal';
+import { bundleStore, selectionStore } from '../lib/personal';
 import { useNav } from '../lib/router';
 import { sectionStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
@@ -24,7 +24,8 @@ export function Header({ catalog, macro, subId, dirty }: HeaderProps) {
   const admin = useAdmin();
   const scrolled = useScrolledHeader();
   const sections = useStore(sectionStore);
-  const pieces = Object.values(useStore(selectionStore)).reduce((n, q) => n + q, 0);
+  const pieces = Object.values(useStore(selectionStore)).reduce((n, q) => n + q, 0)
+    + useStore(bundleStore).reduce((n, b) => n + b.qty * b.picks.flat().length, 0);
   const [eyebrow, wordmark] = splitTitle(catalog.title || "SICILIA D'ASSAPURARI");
   // sottocategoria evidenziata: quella in vista durante lo scorrimento
   const activeSub = sections.active ?? subId;
