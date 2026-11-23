@@ -677,12 +677,14 @@ textarea {
 }
 
 .cat-scroller.can-drag,
-.sub-scroller.can-drag {
+.sub-scroller.can-drag,
+.promo-filters.can-drag {
     cursor: grab;
 }
 
 .cat-scroller.is-dragging,
-.sub-scroller.is-dragging {
+.sub-scroller.is-dragging,
+.promo-filters.is-dragging {
     cursor: grabbing;
     scroll-behavior: auto;
 }
@@ -7396,4 +7398,24 @@ body.perf-lite .pcard:hover .pcard-img {
 
 .promo-search input:focus-visible {
     outline: none;
+}
+
+/* filtri del configuratore su computer: frecce ai lati, niente rientri della barra categorie */
+@media (min-width: 1024px) {
+    .promo-filters-row .horizontal-chip-shell {
+        max-width: none;
+        padding: 0;
+        grid-template-columns: 36px minmax(0, 1fr) 36px;
+        gap: 8px;
+    }
+
+    .promo-filters-row .chip-scroll-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .promo-filters {
+        margin: 0;
+        padding: 0;
+    }
 }

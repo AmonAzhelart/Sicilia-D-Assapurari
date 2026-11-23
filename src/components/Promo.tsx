@@ -18,7 +18,7 @@ import { useNav } from '../lib/router';
 import { catalogStore, createStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
 import { Icon } from './Icon';
-import { AdminIconButton, LinkBox, Media } from './ui';
+import { AdminIconButton, LinkBox, Media, ScrollRow } from './ui';
 
 /* ---------- Testi e calcoli condivisi ---------- */
 
@@ -470,8 +470,11 @@ function PromoStep({ i, slot, options, picked, onPick, onUnpick }: {
             </label>
           )}
           {groupable && (
-            <div className="search-filters promo-filters" role="group" aria-label="Filtra per tipo">
-              <button type="button" className={cx('search-filter', !group && 'active')} aria-pressed={!group} onClick={() => setGroup(null)}>
+            // come le categorie in alto: frecce, rotella e trascinamento su computer, scorrimento col dito su telefono
+            <ScrollRow wrapperClass="promo-filters-row" scrollerClass="search-filters promo-filters" label="i tipi di prodotto"
+              activeKey={group ?? ''}>
+              <button type="button" className={cx('search-filter', !group && 'active')} aria-pressed={!group}
+                data-active={!group || undefined} onClick={() => setGroup(null)}>
                 Tutti <span>{matches.length}</span>
               </button>
               {groups.map((g) => {
@@ -479,12 +482,12 @@ function PromoStep({ i, slot, options, picked, onPick, onUnpick }: {
                 const on = group === g.key;
                 return (
                   <button key={g.key} type="button" className={cx('search-filter', on && 'active')} aria-pressed={on}
-                    disabled={!n && !on} onClick={() => setGroup(on ? null : g.key)}>
+                    data-active={on || undefined} disabled={!n && !on} onClick={() => setGroup(on ? null : g.key)}>
                     {g.label} <span>{n}</span>
                   </button>
                 );
               })}
-            </div>
+            </ScrollRow>
           )}
         </div>
       )}
