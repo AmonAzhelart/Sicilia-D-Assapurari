@@ -62,13 +62,21 @@ export interface Macro {
   [extra: string]: unknown;
 }
 
+/** Un gruppo di prodotti: scelti uno per uno e/o categorie intere (che comprendono anche i prodotti aggiunti dopo). */
+export interface Scope {
+  /** Codici dei prodotti scelti uno per uno. */
+  ids: string[];
+  /** Opzionale: codici di sottocategorie intere. */
+  subs?: string[];
+  /** Opzionale: codici di macro categorie intere. */
+  macros?: string[];
+}
+
 /** Una scelta del pack promo: "1 panettone tra questi". */
-export interface PromoSlot {
+export interface PromoSlot extends Scope {
   label: string;
   /** Pezzi da scegliere. */
   qty: number;
-  /** Codici dei prodotti tra cui scegliere. */
-  ids: string[];
   /** Pezzi in omaggio. Assente = a pagamento. */
   free?: boolean;
   [extra: string]: unknown;

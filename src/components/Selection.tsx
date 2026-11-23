@@ -7,7 +7,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import type { Catalog, Promo } from '../types';
-import { indexCatalog, isPromoLive, productFromParam, type ProductRef } from '../lib/catalog';
+import { indexCatalog, isPromoLive, productFromParam, scopeIds, type ProductRef } from '../lib/catalog';
 import { useEscape, useScrollLock } from '../lib/hooks';
 import {
   addToSelection, bundleKey, bundleStore, clearSelection, selectionStore, setBundleQuantity, setQuantity, type BundleItem,
@@ -54,7 +54,7 @@ export function useSelectionSummary(catalog: Catalog) {
     for (const item of bundleItems) {
       const promo = catalog.promos.find((p) => p.id === item.promo);
       const valid = !!promo && isPromoLive(promo) && promo.slots.length === item.picks.length
-        && promo.slots.every((s, i) => item.picks[i].length === s.qty && item.picks[i].every((id) => s.ids.includes(id) && index.byId.has(id)));
+        && promo.slots.every((s, i) => item.picks[i].length === s.qty && item.picks[i].every((id) => scopeIds(catalog, s).includes(id) && index.byId.has(id)));
       if (!valid) {
         invalid.push(item);
         continue;

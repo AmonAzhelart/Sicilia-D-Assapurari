@@ -66,6 +66,11 @@ export function packOffer(unitPrice: number | null, pack: Pack): PackOffer {
   return { qty, discount, full, total, perUnit: round2(total / qty) };
 }
 
+/** Pack da salvare: almeno 2 pezzi, uno per quantita' (vale l'ultimo scritto), in ordine di quantita'. */
+export const cleanPacks = (packs: Pack[]): Pack[] =>
+  [...new Map(packs.filter((p) => p.qty >= 2).map((p) => [p.qty, { qty: p.qty, discount: p.discount }])).values()]
+    .sort((a, b) => a.qty - b.qty);
+
 /** Pack validi (almeno 2 pezzi), in ordine di quantita'. */
 export function packOffers(product: Product): PackOffer[] {
   if (!Array.isArray(product.packs)) return [];
@@ -151,16 +156,4 @@ export function bundleQuote(promo: Pick<Promo, 'discount' | 'slots'>, picks: Pro
     }
   }
   return { list: round2(list), total: applyDiscount(paid, percent(promo.discount)), gifts: round2(gifts) };
-}
-
-/** Prezzo "a partire da": i prodotti piu' economici di ogni scelta (null se una scelta non ha prezzi). */
-export function bundleFrom(promo: Pick<Promo, 'discount' | 'slots'>, products: (ids: string[]) => Product[]): BundleQuote {
-  const picks = promo.slots.map((slot) => {
-    const priced = products(slot.ids).filter((p) => priceInfo(p).final !== null);
-    const key = (p: Product) => (slot.free ? priceInfo(p).base! : priceInfo(p).final!);
-    const cheapest = priced.reduce<Product | null>((best, p) => (!best || key(p) < key(best) ? p : best), null);
-    return cheapest ? new Array<Product>(slot.qty).fill(cheapest) : [];
-  });
-  // un omaggio senza prezzo non cambia il totale
-  return picks.some((p, i) => !p.length && !promo.slots[i].free) ? { list: null, total: null, gifts: 0 } : bundleQuote(promo, picks);
 }

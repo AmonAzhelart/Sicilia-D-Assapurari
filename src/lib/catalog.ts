@@ -1,6 +1,6 @@
 // Caricamento, normalizzazione, serializzazione, slug e ricerca del catalogo.
 // Nessuna dipendenza dal DOM: testato con `npm test`.
-import type { Catalog, Macro, Product, Promo, PromoSlot, Sub, TechRow } from '../types';
+import type { Catalog, Macro, Product, Promo, PromoSlot, Scope, Sub, TechRow } from '../types';
 
 type Json = Record<string, any>;
 
@@ -10,6 +10,7 @@ export const rawFileUrl = (file: string) => `${GITLAB_FILES}${encodeURIComponent
 
 const str = (value: unknown) => (typeof value === 'string' ? value : '');
 const list = (value: unknown): Json[] => (Array.isArray(value) ? value : []);
+const strings = (value: unknown) => (Array.isArray(value) ? value : []).filter((v: unknown): v is string => typeof v === 'string');
 
 let uidSeq = 0;
 export const newUid = () => `u${(++uidSeq).toString(36)}`;
@@ -89,12 +90,14 @@ export function normalizePromo(raw: Json): Promo {
     desc: str(rest.desc),
     discount: int(rest.discount, 0, 99),
     slots: list(rest.slots).map((raw): PromoSlot => {
-      const { free, ...slot } = raw || {};
+      const { free, subs, macros, ...slot } = raw || {};
       return {
         ...slot,
         label: str(slot.label),
         qty: int(slot.qty, 1, 99),
-        ids: (Array.isArray(slot.ids) ? slot.ids : []).filter((id: unknown): id is string => typeof id === 'string'),
+        ids: strings(slot.ids),
+        ...(strings(subs).length > 0 && { subs: strings(subs) }),
+        ...(strings(macros).length > 0 && { macros: strings(macros) }),
         ...(free === true && { free: true }),
       };
     }),
@@ -280,9 +283,33 @@ export function productFromParam(index: CatalogIndex, param: string): ProductRef
 export const today = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-/** Visibile ai clienti: non in bozza, non scaduta e con prodotti in ogni scelta. */
+const isEmpty = (scope: Scope) => !scope.ids.length && !scope.subs?.length && !scope.macros?.length;
+
+/** Visibile ai clienti: non in bozza, non scaduta e con prodotti o categorie in ogni scelta. */
 export const isPromoLive = (promo: Promo, day = today()) =>
-  !promo.draft && (!promo.end || promo.end >= day) && promo.slots.length > 0 && promo.slots.every((s) => s.ids.length > 0);
+  !promo.draft && (!promo.end || promo.end >= day) && promo.slots.length > 0 && !promo.slots.some(isEmpty);
+
+const scopeCache = new WeakMap<Catalog, WeakMap<Scope, string[]>>();
+
+/**
+ * Codici dei prodotti di un gruppo: quelli scelti uno per uno, poi tutti quelli delle categorie e
+ * sottocategorie collegate, compresi i prodotti aggiunti dopo (il collegamento e' alla categoria).
+ */
+export function scopeIds(catalog: Catalog, scope: Scope): string[] {
+  let byScope = scopeCache.get(catalog);
+  if (!byScope) scopeCache.set(catalog, (byScope = new WeakMap()));
+  let ids = byScope.get(scope);
+  if (!ids) {
+    const macros = new Set(scope.macros);
+    const subs = new Set(scope.subs);
+    const linked = macros.size || subs.size
+      ? catalog.macros.flatMap((m) => m.products.filter((p) => macros.has(m.id) || subs.has(p.categoryId)).map((p) => p.id))
+      : [];
+    ids = [...new Set([...scope.ids, ...linked])];
+    byScope.set(scope, ids);
+  }
+  return ids;
+}
 
 /** Parametro ?promo= ("titolo-codice"): conta il codice dopo l'ultimo "-". */
 export const promoParam = (promo: Promo) => `${slugify(promo.title)}-${promo.id}`;
@@ -291,7 +318,7 @@ export const promoFromParam = (catalog: Catalog, param: string) =>
 
 /** Promo attive che includono il prodotto. */
 export const promosOf = (catalog: Catalog, productId: string) =>
-  catalog.promos.filter((p) => isPromoLive(p) && p.slots.some((s) => s.ids.includes(productId)));
+  catalog.promos.filter((p) => isPromoLive(p) && p.slots.some((s) => scopeIds(catalog, s).includes(productId)));
 
 export interface SearchGroup {
   macro: Macro;

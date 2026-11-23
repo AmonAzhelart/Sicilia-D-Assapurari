@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCatalog, serializeCatalog, indexCatalog, searchCatalog, macroFileName, isBlankHtml, slugify, keyFacts, productFromParam,
-  isPromoLive, promoFromParam, promoParam, promosOf,
+  isPromoLive, promoFromParam, promoParam, promosOf, scopeIds,
 } from './catalog.ts';
 
 const config = {
@@ -132,4 +132,25 @@ test('promozioni: salvate solo se presenti, rilette identiche, visibili solo se 
   assert.equal(promoFromParam(catalog, 'natale1'), p);
   assert.equal(promosOf({ ...catalog, promos: [{ ...p, end: undefined }] }, 'aaa').length, 1);
   assert.equal(promosOf({ ...catalog, promos: [{ ...p, end: undefined }] }, 'zzz').length, 0);
+});
+
+test('scelte collegate a categorie: comprendono anche i prodotti aggiunti dopo', () => {
+  const slot = { label: 'Vino', qty: 1, ids: ['zzz'], subs: ['cat-0'] };
+  const saved = JSON.parse(serializeCatalog(buildCatalog({ ...config, promos: [{ id: 'p1', title: 'x', desc: '', discount: 10, slots: [slot] }] }, [vini])).get('config.json')!);
+  assert.deepEqual(saved.promos[0].slots[0], slot); // subs salvato, macros assente
+
+  const catalog = buildCatalog({ ...config, promos: [{ id: 'p1', title: 'x', desc: '', discount: 10, slots: [slot] }] }, [vini]);
+  const [a, b] = catalog.macros[0].products;
+  const s = catalog.promos[0].slots[0];
+  assert.deepEqual(scopeIds(catalog, s), ['zzz', a.id, b.id]); // prima quelli singoli, senza doppioni
+  assert.equal(promosOf(catalog, b.id).length, 1);
+
+  // nuovo prodotto nella sottocategoria: entra nella promo senza toccarla
+  const added = { ...a, uid: 'nuovo', id: 'nuovo1' };
+  const next = { ...catalog, macros: [{ ...catalog.macros[0], products: [...catalog.macros[0].products, added] }] };
+  assert.equal(promosOf(next, 'nuovo1').length, 1);
+  assert.deepEqual(scopeIds(next, { ids: [], macros: ['cat-vini'] }), [a.id, b.id, 'nuovo1']);
+
+  // collegata solo a una categoria (senza prodotti singoli): resta visibile
+  assert.equal(isPromoLive({ ...catalog.promos[0], slots: [{ label: 'x', qty: 1, ids: [], macros: ['cat-vini'] }] }, '2026-01-01'), true);
 });

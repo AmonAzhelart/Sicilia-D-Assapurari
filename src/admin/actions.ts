@@ -1,7 +1,7 @@
 // Operazioni dell'amministrazione sul catalogo (stato immutabile in catalogStore) e salvataggio su GitLab.
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import { faExpand } from '@fortawesome/free-solid-svg-icons';
-import type { Catalog, Macro, Product } from '../types';
+import type { Catalog, Macro, Pack, Product } from '../types';
 import type { AdminApi } from '../lib/admin';
 import { CONFIG_FILE, loadFromGitLab, macroFileName, normalizeProduct, productId, serializeCatalog } from '../lib/catalog';
 import { compressImage } from '../lib/images';
@@ -424,6 +424,19 @@ export const adminApi: AdminApi = {
     return true;
   },
 };
+
+/** Stessi pack su tanti prodotti in un colpo: sostituiscono quelli che hanno (lista vuota = li toglie). */
+export function setPacksOf(ids: string[], packs: Pack[]) {
+  const targets = new Set(ids);
+  // campo assente quando non usato: i prodotti senza pack restano identici nel JSON
+  const next = (p: Product): Product => ({ ...p, packs: packs.length ? packs.map((pack) => ({ ...pack })) : undefined });
+  update((c) => ({
+    ...c,
+    macros: c.macros.map((m) => (m.products.some((p) => targets.has(p.id))
+      ? { ...m, products: m.products.map((p) => (targets.has(p.id) ? next(p) : p)) }
+      : m)),
+  }));
+}
 
 /* ---------- Caricamento e salvataggio ---------- */
 

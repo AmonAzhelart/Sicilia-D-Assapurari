@@ -4,14 +4,16 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import {
-  faArrowRight, faBagShopping, faCheck, faCircleInfo, faGift, faMagnifyingGlass, faMinus, faPlus, faTrash, faXmark,
+  faArrowRight, faBagShopping, faCheck, faCircleInfo, faFolder, faGift, faLayerGroup, faMagnifyingGlass, faMinus, faPlus, faTrash, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
-import type { Catalog, Macro, Product, Promo, PromoSlot } from '../types';
-import { indexCatalog, isPromoLive, promosOf, searchCatalog, today, type CatalogIndex, type ProductRef } from '../lib/catalog';
+import type { Catalog, Macro, Product, Promo, PromoSlot, Scope } from '../types';
+import {
+  indexCatalog, isPromoLive, promosOf, scopeIds, searchCatalog, today, type CatalogIndex, type ProductRef,
+} from '../lib/catalog';
 import { useAdmin } from '../lib/admin';
 import { cx, useEscape, useScrollLock } from '../lib/hooks';
 import { addBundle } from '../lib/personal';
-import { bundleFrom, bundleQuote, formatPrice, priceInfo } from '../lib/pricing';
+import { bundleQuote, formatPrice, priceInfo } from '../lib/pricing';
 import { useNav } from '../lib/router';
 import { catalogStore, createStore, useStore } from '../lib/store';
 import { toast } from '../lib/toast';
@@ -22,8 +24,6 @@ import { AdminIconButton, LinkBox, Media } from './ui';
 
 const refsOf = (index: CatalogIndex, ids: string[]) =>
   ids.map((id) => index.byId.get(id)).filter((r): r is ProductRef => !!r);
-
-const productsOf = (index: CatalogIndex) => (ids: string[]) => refsOf(index, ids).map((r) => r.product);
 
 const giftCount = (promo: Promo) => promo.slots.reduce((n, s) => n + (s.free ? s.qty : 0), 0);
 
@@ -54,11 +54,11 @@ function endLabel(end?: string): string | null {
 const draftStore = createStore<Record<string, string[][]>>({});
 
 /** Apre la promo con il prodotto gia' scelto: nella prima scelta libera che lo propone, altrimenti al posto dell'ultimo scelto. */
-export function startPromo(promo: Promo, productId: string) {
+export function startPromo(catalog: Catalog, promo: Promo, productId: string) {
   draftStore.set((drafts) => {
     const picks = promo.slots.map((_, i) => drafts[promo.id]?.[i] ?? []);
     if (picks.some((p) => p.includes(productId))) return drafts;
-    const offered = promo.slots.map((s, i) => (s.ids.includes(productId) ? i : -1)).filter((i) => i >= 0);
+    const offered = promo.slots.map((s, i) => (scopeIds(catalog, s).includes(productId) ? i : -1)).filter((i) => i >= 0);
     const i = offered.find((j) => picks[j].length < promo.slots[j].qty) ?? offered[0];
     if (i === undefined) return drafts;
     picks[i] = [...picks[i].slice(0, promo.slots[i].qty - 1), productId];
@@ -81,7 +81,8 @@ function Fan({ refs, size }: { refs: ProductRef[]; size: 'sm' | 'lg' }) {
 }
 
 /** "[panettoni] + [spumanti] = -15%" */
-function Equation({ promo, index }: { promo: Promo; index: CatalogIndex }) {
+function Equation({ promo, catalog }: { promo: Promo; catalog: Catalog }) {
+  const index = indexCatalog(catalog);
   return (
     <div className="promo-eq" aria-hidden="true">
       {/* operatore e termine insieme: andando a capo il "+" apre la riga invece di chiuderla */}
@@ -89,7 +90,7 @@ function Equation({ promo, index }: { promo: Promo; index: CatalogIndex }) {
         <span key={i} className="promo-eq-group">
           {i > 0 && <span className="promo-eq-op">+</span>}
           <span className={cx('promo-eq-item', slot.free && 'is-free')}>
-            <Fan refs={refsOf(index, slot.ids)} size="lg" />
+            <Fan refs={refsOf(index, scopeIds(catalog, slot))} size="lg" />
             <span className="promo-eq-label">
               {slot.free && <Icon icon={faGift} />} {slot.qty} {slot.label || 'Prodotto'}
             </span>
@@ -108,11 +109,9 @@ function Equation({ promo, index }: { promo: Promo; index: CatalogIndex }) {
 
 /* ---------- Vetrina in home ---------- */
 
-function PromoCard({ promo, index }: { promo: Promo; index: CatalogIndex }) {
+function PromoCard({ promo, catalog }: { promo: Promo; catalog: Catalog }) {
   const nav = useNav();
   const admin = useAdmin();
-  const from = bundleFrom(promo, productsOf(index));
-  const like = refsOf(index, promo.slots.flatMap((s) => s.ids))[0]?.product.price ?? '';
   const end = endLabel(promo.end);
   const live = isPromoLive(promo);
   return (
@@ -128,17 +127,10 @@ function PromoCard({ promo, index }: { promo: Promo; index: CatalogIndex }) {
         <h3 className="promo-card-title">{promo.title || 'Promozione'}</h3>
         {promo.desc && <p className="promo-card-desc">{promo.desc}</p>}
         <div className="promo-card-foot">
-          {from.total !== null && (
-            <span className="promo-from">
-              <small>Pack da</small>
-              {from.list !== null && from.list - from.total > 0.004 && <s>{formatPrice(from.list, like)}</s>}
-              <strong>{formatPrice(from.total, like)}</strong>
-            </span>
-          )}
           <span className="hero-cta primary">{admin ? 'Modifica' : 'Crea il tuo pack'} <Icon icon={faArrowRight} /></span>
         </div>
       </div>
-      <Equation promo={promo} index={index} />
+      <Equation promo={promo} catalog={catalog} />
     </LinkBox>
   );
 }
@@ -146,7 +138,6 @@ function PromoCard({ promo, index }: { promo: Promo; index: CatalogIndex }) {
 export function PromoShowcase({ catalog }: { catalog: Catalog }) {
   const nav = useNav();
   const admin = useAdmin();
-  const index = indexCatalog(catalog);
   const promos = admin ? catalog.promos : catalog.promos.filter((p) => isPromoLive(p));
   if (!promos.length && !admin) return null;
   return (
@@ -164,7 +155,7 @@ export function PromoShowcase({ catalog }: { catalog: Catalog }) {
       </div>
       {promos.length ? (
         <div className={cx('promo-grid', promos.length === 1 && 'is-single')}>
-          {promos.map((p) => <PromoCard key={p.id} promo={p} index={index} />)}
+          {promos.map((p) => <PromoCard key={p.id} promo={p} catalog={catalog} />)}
         </div>
       ) : (
         <p className="promo-empty">
@@ -181,7 +172,7 @@ export function PromoShowcase({ catalog }: { catalog: Catalog }) {
 export function PromoBanner({ catalog, macro }: { catalog: Catalog; macro: Macro }) {
   const nav = useNav();
   const ids = new Set(macro.products.map((p) => p.id));
-  const promos = catalog.promos.filter((p) => isPromoLive(p) && p.slots.some((s) => s.ids.some((id) => ids.has(id))));
+  const promos = catalog.promos.filter((p) => isPromoLive(p) && p.slots.some((s) => scopeIds(catalog, s).some((id) => ids.has(id))));
   if (!promos.length) return null;
   return (
     <div className="promo-banners">
@@ -206,13 +197,14 @@ export function PromoHint({ product }: { product: Product }) {
   const nav = useNav();
   const catalog = useStore(catalogStore);
   const promos = catalog ? promosOf(catalog, product.id) : [];
-  if (!promos.length) return null;
+  if (!catalog || !promos.length) return null;
   return (
     <div className="pd-promos">
       {promos.map((promo) => {
-        const others = promo.slots.filter((s) => !s.free && !s.ids.includes(product.id));
+        const others = promo.slots.filter((s) => !s.free && !scopeIds(catalog, s).includes(product.id));
         return (
-          <button key={promo.id} type="button" className="pd-promo" onClick={() => { startPromo(promo, product.id); nav.openPromo(promo.id); }}>
+          <button key={promo.id} type="button" className="pd-promo"
+            onClick={() => { startPromo(catalog, promo, product.id); nav.openPromo(promo.id); }}>
             <span className="pd-promo-icon"><Icon icon={faGift} /></span>
             <span className="pd-promo-text">
               <small>In promozione · {promo.title}</small>
@@ -276,10 +268,10 @@ function PromoBuilder({ promo }: { promo: Promo }) {
   const catalog = useStore(catalogStore)!;
   const drafts = useStore(draftStore);
   const index = indexCatalog(catalog);
-  const options = promo.slots.map((slot) => refsOf(index, slot.ids));
+  const options = promo.slots.map((slot) => refsOf(index, scopeIds(catalog, slot)));
   // scelte valide anche se nel frattempo il catalogo e' cambiato
   const picks = promo.slots.map((slot, i) =>
-    (drafts[promo.id]?.[i] ?? []).filter((id) => slot.ids.includes(id) && index.byId.has(id)).slice(0, slot.qty));
+    (drafts[promo.id]?.[i] ?? []).filter((id) => scopeIds(catalog, slot).includes(id) && index.byId.has(id)).slice(0, slot.qty));
   const chosen = picks.map((ids) => refsOf(index, ids));
   const quote = bundleQuote(promo, chosen.map((refs) => refs.map((r) => r.product)));
   const missing = promo.slots.map((slot, i) => slot.qty - picks[i].length);
@@ -452,13 +444,12 @@ function PromoEditor({ promo }: { promo: Promo }) {
   const admin = useAdmin()!;
   const nav = useNav();
   const catalog = useStore(catalogStore)!;
-  const index = indexCatalog(catalog);
   const set = (patch: Partial<Promo>) => admin.updatePromo(promo.id, patch);
   const setSlot = (i: number, patch: Partial<PromoSlot>) =>
     set({ slots: promo.slots.map((s, j) => (j === i ? { ...s, ...patch } : s)) });
 
   const warnings = [
-    ...promo.slots.flatMap((s, i) => (s.ids.length ? [] : [`Scelta ${i + 1}: aggiungi almeno un prodotto.`])),
+    ...promo.slots.flatMap((s, i) => (scopeIds(catalog, s).length ? [] : [`Scelta ${i + 1}: aggiungi almeno un prodotto o una categoria con dei prodotti.`])),
     ...(!promo.slots.length ? ['Aggiungi almeno una scelta.'] : []),
     ...(!promo.discount && !giftCount(promo) ? ['Imposta uno sconto o una scelta in omaggio: così la promo non fa risparmiare.'] : []),
     ...(promo.end && promo.end < today() ? ['La data di fine è passata: i clienti non la vedono più.'] : []),
@@ -505,8 +496,9 @@ function PromoEditor({ promo }: { promo: Promo }) {
 
         <h3 className="promo-form-title">Le scelte del cliente</h3>
         <p className="promo-form-note">
-          Per ogni scelta il cliente prende i pezzi indicati tra i prodotti che aggiungi. Lo sconto vale sui pezzi a pagamento;
-          le scelte «in omaggio» sono gratis.
+          Per ogni scelta il cliente prende i pezzi indicati tra i prodotti che aggiungi: uno per uno, oppure intere categorie
+          e sottocategorie (i prodotti che aggiungerai dopo a quelle categorie entrano da soli nella promo).
+          Lo sconto vale sui pezzi a pagamento; le scelte «in omaggio» sono gratis.
         </p>
         {promo.slots.map((slot, i) => (
           <section key={i} className={cx('promo-slot-edit', slot.free && 'is-free')}>
@@ -528,9 +520,7 @@ function PromoEditor({ promo }: { promo: Promo }) {
               <AdminIconButton icon={faTrash} title="Elimina scelta" danger
                 onClick={() => set({ slots: promo.slots.filter((_, j) => j !== i) })} />
             </div>
-            <PickedList ids={slot.ids} onChange={(ids) => setSlot(i, { ids })} />
-            <ProductPicker selected={slot.ids} onToggle={(id) => setSlot(i, { ids: toggle(slot.ids, id) })} />
-            <SubPicker catalog={catalog} onAdd={(ids) => setSlot(i, { ids: [...new Set([...slot.ids, ...ids])] })} />
+            <ScopePicker scope={slot} onChange={(patch) => setSlot(i, patch)} />
           </section>
         ))}
         <div className="sheet-admin-actions">
@@ -545,7 +535,7 @@ function PromoEditor({ promo }: { promo: Promo }) {
         </div>
 
         <h3 className="promo-form-title">Anteprima</h3>
-        <div className="promo-grid is-single" inert><PromoCard promo={promo} index={index} /></div>
+        <div className="promo-grid is-single" inert><PromoCard promo={promo} catalog={catalog} /></div>
 
         <div className="sheet-admin-actions promo-form-end">
           <button type="button" className="sheet-admin-btn danger"
@@ -563,27 +553,66 @@ function PromoEditor({ promo }: { promo: Promo }) {
 
 const toggle = (ids: string[], id: string) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
 
-/** Aggiunge in un colpo tutti i prodotti di una sottocategoria. */
-function SubPicker({ catalog, onAdd }: { catalog: Catalog; onAdd: (ids: string[]) => void }) {
+const without = (ids: string[] | undefined, id: string) => {
+  const next = (ids ?? []).filter((x) => x !== id);
+  return next.length ? next : undefined;
+};
+
+/**
+ * Gruppo di prodotti (scelte delle promo, pack su piu' prodotti): prodotti uno per uno e categorie o
+ * sottocategorie intere. Le categorie restano collegate, quindi comprendono anche i prodotti aggiunti dopo.
+ */
+export function ScopePicker({ scope, onChange }: { scope: Scope; onChange: (patch: Partial<Scope>) => void }) {
+  const catalog = useStore(catalogStore);
+  if (!catalog) return null;
+  const count = scopeIds(catalog, scope).length;
+  const inSub = (m: Macro, subId: string) => m.products.filter((p) => p.categoryId === subId).length;
+  const macros = catalog.macros.filter((m) => scope.macros?.includes(m.id));
+  const subs = catalog.macros.flatMap((m) => m.subcategories.filter((s) => scope.subs?.includes(s.id)).map((sub) => ({ m, sub })));
   return (
-    <label className="promo-subpick">
-      <span className="sr-only">Aggiungi una sottocategoria</span>
-      <select value="" onChange={(e) => {
-        const [macroId, subId] = e.target.value.split('|');
-        const macro = catalog.macros.find((m) => m.id === macroId);
-        if (macro) onAdd(macro.products.filter((p) => p.categoryId === subId).map((p) => p.id));
-      }}>
-        <option value="">+ Aggiungi tutta una sottocategoria…</option>
-        {catalog.macros.map((m) => (
-          <optgroup key={m.id} label={m.name}>
-            {m.subcategories.map((s) => {
-              const n = m.products.filter((p) => p.categoryId === s.id).length;
-              return n ? <option key={s.id} value={`${m.id}|${s.id}`}>{s.name} ({n})</option> : null;
-            })}
-          </optgroup>
-        ))}
-      </select>
-    </label>
+    <div className="scope-picker">
+      {(macros.length > 0 || subs.length > 0) && (
+        <div className="picked-list">
+          {macros.map((m) => (
+            <span key={m.id} className="picked-chip is-group">
+              <span><Icon icon={faLayerGroup} /> Tutta la categoria {m.name} <small>({m.products.length})</small></span>
+              <button type="button" onClick={() => onChange({ macros: without(scope.macros, m.id) })} aria-label={`Togli la categoria ${m.name}`}>
+                <Icon icon={faXmark} />
+              </button>
+            </span>
+          ))}
+          {subs.map(({ m, sub }) => (
+            <span key={sub.id} className="picked-chip is-group">
+              <span><Icon icon={faFolder} /> {sub.name} <small>· {m.name} ({inSub(m, sub.id)})</small></span>
+              <button type="button" onClick={() => onChange({ subs: without(scope.subs, sub.id) })} aria-label={`Togli la sottocategoria ${sub.name}`}>
+                <Icon icon={faXmark} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <PickedList ids={scope.ids} onChange={(ids) => onChange({ ids })} />
+      <ProductPicker selected={scope.ids} onToggle={(id) => onChange({ ids: toggle(scope.ids, id) })} />
+      <label className="promo-subpick">
+        <span className="sr-only">Aggiungi una categoria o sottocategoria intera</span>
+        <select value="" onChange={(e) => {
+          const [kind, id] = e.target.value.split('|');
+          if (kind === 'm') onChange({ macros: [...(scope.macros ?? []), id] });
+          if (kind === 's') onChange({ subs: [...(scope.subs ?? []), id] });
+        }}>
+          <option value="">+ Aggiungi una categoria o sottocategoria intera…</option>
+          {catalog.macros.map((m) => (
+            <optgroup key={m.id} label={m.name}>
+              {!scope.macros?.includes(m.id) && <option value={`m|${m.id}`}>Tutta la categoria ({m.products.length})</option>}
+              {!scope.macros?.includes(m.id) && m.subcategories.filter((s) => !scope.subs?.includes(s.id)).map((s) => (
+                <option key={s.id} value={`s|${s.id}`}>{s.name} ({inSub(m, s.id)})</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
+      <p className="scope-count">In tutto: {count === 1 ? '1 prodotto' : `${count} prodotti`}</p>
+    </div>
   );
 }
 

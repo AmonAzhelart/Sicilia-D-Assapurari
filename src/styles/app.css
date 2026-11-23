@@ -6000,26 +6000,6 @@ body.perf-lite .pcard:hover .pcard-img {
     margin-top: 22px;
 }
 
-.promo-from {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    color: var(--text-light);
-}
-
-.promo-from small {
-    font-size: 0.66rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-}
-
-.promo-from strong {
-    color: var(--accent);
-    font-family: var(--f-head);
-    font-size: 1.5rem;
-}
-
 .promo-empty {
     padding: 22px;
     border: 1px dashed var(--border-gold);
@@ -7259,4 +7239,57 @@ body.perf-lite .pcard:hover .pcard-img {
     .promo-sheet {
         animation: none;
     }
+}
+
+/* ---------- Gruppi di prodotti (scelte delle promo, pack su piu' prodotti) ---------- */
+.picked-chip.is-group {
+    border-color: rgba(216, 164, 79, 0.55);
+    background: rgba(216, 164, 79, 0.16);
+}
+
+.picked-chip.is-group .icon {
+    color: var(--gold);
+}
+
+.scope-count {
+    margin: 8px 0 0;
+    color: var(--text-light);
+    font-size: 0.8rem;
+}
+
+/* finestra "Pack su piu' prodotti" */
+.img-mode-dialog.bulk-form {
+    width: min(640px, 94vw);
+    max-width: none;
+    max-height: 90dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    text-align: left;
+}
+
+.bulk-form .img-mode-title,
+.bulk-form .img-mode-sub {
+    text-align: center;
+}
+
+.bulk-form .sheet-section-title {
+    margin: 22px 0 10px;
+}
+
+.bulk-form .sheet-admin-actions {
+    margin-top: 10px;
+}
+
+.bulk-form .img-mode-choices {
+    position: sticky;
+    bottom: -20px;
+    margin: 16px -22px -20px;
+    padding: 14px 22px 20px;
+    background: var(--surface-var);
+    border-top: 1px solid var(--border-gold);
+}
+
+.img-mode-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }

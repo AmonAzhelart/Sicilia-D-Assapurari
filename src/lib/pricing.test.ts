@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bundleFrom, bundleQuote, formatPrice, lineQuote, packOffers, parsePrice, priceInfo } from './pricing.ts';
+import { bundleQuote, cleanPacks, formatPrice, lineQuote, packOffers, parsePrice, priceInfo } from './pricing.ts';
 import type { Product } from '../types';
 
 const product = (fields: Partial<Product>): Product => ({
@@ -55,7 +55,7 @@ test('quantita\': miglior combinazione di pack', () => {
   assert.equal(lineQuote(product({ price: 'su richiesta' }), 2).total, null);
 });
 
-test('pack promo: sconto sui pezzi a pagamento, omaggi gratis, "a partire da"', () => {
+test('pack promo: sconto sui pezzi a pagamento, omaggi gratis', () => {
   const panettone = product({ id: 'pa', price: '€ 30.00' });
   const panettoneScontato = product({ id: 'pb', price: '€ 40.00', discount: 25 }); // 30
   const spumante = product({ id: 'sp', price: '€ 20,00' });
@@ -77,11 +77,10 @@ test('pack promo: sconto sui pezzi a pagamento, omaggi gratis, "a partire da"', 
   // pezzo a pagamento senza prezzo -> su richiesta; omaggio senza prezzo -> ignorato
   assert.equal(bundleQuote(promo, [[product({ price: 'su richiesta' })], [spumante], []]).total, null);
   assert.equal(bundleQuote(promo, [[panettone], [spumante], [product({ price: '' })]]).total, 45);
+});
 
-  const byId = new Map([panettone, panettoneScontato, spumante, torrone].map((p) => [p.id, p]));
-  const from = bundleFrom(promo, (ids) => ids.map((id) => byId.get(id)!).filter(Boolean));
-  assert.equal(from.total, 45);
-  assert.equal(bundleFrom({ ...promo, slots: [{ label: 'x', qty: 2, ids: ['sp'] }] }, (ids) => ids.map((id) => byId.get(id)!)).total, 36);
-  assert.equal(bundleFrom({ ...promo, slots: [{ label: 'x', qty: 1, ids: [] }] }, () => []).total, null);
-  assert.equal(bundleFrom({ ...promo, slots: [promo.slots[1], { label: 'x', qty: 1, ids: [], free: true }] }, (ids) => ids.map((id) => byId.get(id)!)).total, 18);
+test('pack in blocco: almeno 2 pezzi, una sola riga per quantita\', in ordine', () => {
+  assert.deepEqual(cleanPacks([{ qty: 6, discount: 10 }, { qty: 1, discount: 5 }, { qty: 3, discount: 5 }, { qty: 6, discount: 12 }]),
+    [{ qty: 3, discount: 5 }, { qty: 6, discount: 12 }]);
+  assert.deepEqual(cleanPacks([]), []);
 });

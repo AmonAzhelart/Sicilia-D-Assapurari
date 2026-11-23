@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { faCloudArrowUp, faEye, faPenToSquare, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
+import { faCloudArrowUp, faEye, faLayerGroup, faPenToSquare, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 import { App } from '../App';
 import { Icon } from '../components/Icon';
 import { AdminContext } from '../lib/admin';
 import { cx } from '../lib/hooks';
 import { useStore } from '../lib/store';
 import { adminApi, dirtyStore, loadAdminCatalog, logout, menuStore, save } from './actions';
+import { BulkPacks, bulkPacksStore } from './BulkPacks';
 import { DialogHost } from './dialogs';
 
 export function AdminShell() {
@@ -60,6 +61,9 @@ export function AdminShell() {
           <button type="button" className="fab-item" onClick={save} title="Ctrl+S">
             <Icon icon={faCloudArrowUp} /> Salva su GitLab {dirty && <span className="dirty-dot" />}
           </button>
+          <button type="button" className="fab-item muted" onClick={() => { menuStore.set(false); bulkPacksStore.set(true); }}>
+            <Icon icon={faLayerGroup} /> Pack su più prodotti
+          </button>
           <button type="button" className="fab-item muted" onClick={() => { menuStore.set(false); setPreview(true); }}>
             <Icon icon={faEye} /> Anteprima cliente
           </button>
@@ -68,6 +72,7 @@ export function AdminShell() {
           </button>
         </div>
       )}
+      <BulkPacks />
       <DialogHost />
     </AdminContext.Provider>
   );
