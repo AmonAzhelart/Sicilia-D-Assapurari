@@ -7293,3 +7293,107 @@ body.perf-lite .pcard:hover .pcard-img {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ---------- Configuratore: ricerca e prodotti per sottocategoria ---------- */
+/* ricerca e filtri restano in alto mentre si scorrono i prodotti del passo */
+.promo-find {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: grid;
+    gap: 10px;
+    margin: 0 -22px 16px;
+    padding: 10px 22px 12px;
+    border-bottom: 1px solid rgba(216, 164, 79, 0.12);
+    background: #14100d;
+}
+
+.promo-filters {
+    margin: 0 -22px;
+    padding: 0 22px;
+}
+
+@media (min-width: 1024px) {
+    .promo-find {
+        margin-right: -34px;
+        margin-left: -34px;
+        padding-right: 34px;
+        padding-left: 34px;
+    }
+
+    .promo-filters {
+        margin-right: -34px;
+        margin-left: -34px;
+        padding-right: 34px;
+        padding-left: 34px;
+    }
+}
+
+.promo-search input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.promo-search-clear {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(243, 221, 174, 0.08);
+    color: var(--text-sec);
+    cursor: pointer;
+}
+
+.promo-search-clear:hover {
+    background: rgba(243, 221, 174, 0.16);
+    color: var(--primary);
+}
+
+.search-filter:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.promo-group + .promo-group {
+    margin-top: 24px;
+}
+
+.promo-group-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 2px 0 12px;
+    color: var(--gold);
+    font-family: var(--f-body);
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.promo-group-title span {
+    color: var(--text-light);
+    letter-spacing: 0;
+}
+
+.promo-none {
+    padding: 28px 12px;
+    color: var(--text-sec);
+    text-align: center;
+}
+
+.promo-none p {
+    margin-bottom: 14px;
+}
+
+.promo-search:focus-within {
+    border-color: var(--gold);
+}
+
+.promo-search input:focus-visible {
+    outline: none;
+}

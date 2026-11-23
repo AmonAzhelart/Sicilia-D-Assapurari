@@ -1,14 +1,14 @@
 // Promozioni "componi il tuo pack": il cliente sceglie un prodotto per ogni scelta della promo
 // (es. 1 panettone + 1 spumante tra quelli proposti) e ottiene lo sconto e/o gli omaggi.
 // Vetrina in home, banner nelle categorie, invito nella scheda prodotto, configuratore (?promo=) e editor admin.
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { faImage } from '@fortawesome/free-regular-svg-icons';
 import {
   faArrowRight, faBagShopping, faCheck, faCircleInfo, faFolder, faGift, faLayerGroup, faMagnifyingGlass, faMinus, faPlus, faTrash, faXmark,
 } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Product, Promo, PromoSlot, Scope } from '../types';
 import {
-  indexCatalog, isPromoLive, promosOf, scopeIds, searchCatalog, today, type CatalogIndex, type ProductRef,
+  fold, indexCatalog, isPromoLive, promosOf, scopeIds, searchCatalog, today, type CatalogIndex, type ProductRef,
 } from '../lib/catalog';
 import { useAdmin } from '../lib/admin';
 import { cx, useEscape, useScrollLock } from '../lib/hooks';
@@ -336,26 +336,8 @@ function PromoBuilder({ promo }: { promo: Promo }) {
       <SheetHead promo={promo} kicker="Componi il tuo pack" />
       <div className="promo-body">
         {promo.slots.map((slot, i) => (
-          <section key={i} className="promo-step" id={`promo-step-${i}`} aria-labelledby={`promo-step-title-${i}`}>
-            <div className="promo-step-head">
-              <span className={cx('promo-step-num', missing[i] === 0 && 'is-done')}>
-                {missing[i] === 0 ? <Icon icon={faCheck} /> : i + 1}
-              </span>
-              <div>
-                <div className="promo-step-kicker">{slot.free ? <><Icon icon={faGift} /> In omaggio</> : `Scelta ${i + 1}`}</div>
-                <h3 className="promo-step-title" id={`promo-step-title-${i}`}>
-                  {slot.free ? 'Il tuo omaggio: ' : 'Scegli '}{slot.qty} {slot.label}
-                </h3>
-              </div>
-              <span className="promo-step-count">{picks[i].length}/{slot.qty}</span>
-            </div>
-            <div className="promo-tiles">
-              {options[i].map(({ product }) => (
-                <Tile key={product.uid} product={product} slot={slot} count={picks[i].filter((id) => id === product.id).length}
-                  onPick={() => pick(i, product.id)} onUnpick={() => unpick(i, product.id)} />
-              ))}
-            </div>
-          </section>
+          <PromoStep key={i} i={i} slot={slot} options={options[i]} picked={picks[i]}
+            onPick={(id) => pick(i, id)} onUnpick={(id) => unpick(i, id)} />
         ))}
       </div>
       <footer className="promo-foot">
@@ -397,6 +379,130 @@ function PromoBuilder({ promo }: { promo: Promo }) {
         </button>
       </footer>
     </>
+  );
+}
+
+/* ---------- Un passo del configuratore: ricerca e prodotti per sottocategoria ---------- */
+
+interface Group {
+  key: string;
+  label: string;
+  refs: ProductRef[];
+}
+
+const groupKey = (r: ProductRef) => `${r.macro.id}|${r.sub?.id ?? ''}`;
+
+/** Produttore, nome, riga sotto il nome e sottocategoria: dove cerca il cliente. */
+const haystack = ({ product, sub }: ProductRef) => fold(`${product.brand} ${product.name} ${product.infoLine} ${sub?.name ?? ''}`);
+
+/** Prodotti nell'ordine del catalogo, divisi per sottocategoria (con la categoria davanti se la scelta ne prende piu' d'una). */
+function groupsOf(catalog: Catalog, refs: ProductRef[]): Group[] {
+  const pos = (r: ProductRef) => [catalog.macros.indexOf(r.macro), r.macro.subcategories.indexOf(r.sub!), r.macro.products.indexOf(r.product)];
+  const sorted = refs.map((r) => ({ r, p: pos(r) }))
+    .sort((a, b) => a.p[0] - b.p[0] || a.p[1] - b.p[1] || a.p[2] - b.p[2])
+    .map(({ r }) => r);
+  const manyMacros = new Set(refs.map((r) => r.macro.id)).size > 1;
+  const groups = new Map<string, Group>();
+  for (const r of sorted) {
+    const key = groupKey(r);
+    if (!groups.has(key)) {
+      const label = manyMacros ? [r.macro.name, r.sub?.name].filter(Boolean).join(' · ') : r.sub?.name || r.macro.name;
+      groups.set(key, { key, label, refs: [] });
+    }
+    groups.get(key)!.refs.push(r);
+  }
+  return [...groups.values()];
+}
+
+function PromoStep({ i, slot, options, picked, onPick, onUnpick }: {
+  i: number; slot: PromoSlot; options: ProductRef[]; picked: string[]; onPick: (id: string) => void; onUnpick: (id: string) => void;
+}) {
+  const catalog = useStore(catalogStore)!;
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState<string | null>(null);
+  const groups = useMemo(() => groupsOf(catalog, options), [catalog, options.map((r) => r.product.uid).join()]);
+  const all = groups.flatMap((g) => g.refs);
+  const terms = fold(query).split(/\s+/).filter(Boolean);
+  const matches = terms.length ? all.filter((r) => terms.every((t) => haystack(r).includes(t))) : all;
+  const shown = group ? matches.filter((r) => groupKey(r) === group) : matches;
+  const visible = new Set(shown);
+  const sections = groups.map((g) => ({ ...g, refs: g.refs.filter((r) => visible.has(r)) })).filter((g) => g.refs.length > 0);
+  const searchable = all.length > 6;
+  const groupable = groups.length > 1;
+  const done = picked.length === slot.qty;
+  const reset = () => { setQuery(''); setGroup(null); };
+
+  const tiles = (refs: ProductRef[]) => (
+    <div className="promo-tiles">
+      {refs.map(({ product }) => (
+        <Tile key={product.uid} product={product} slot={slot} count={picked.filter((id) => id === product.id).length}
+          onPick={() => onPick(product.id)} onUnpick={() => onUnpick(product.id)} />
+      ))}
+    </div>
+  );
+
+  return (
+    <section className="promo-step" id={`promo-step-${i}`} aria-labelledby={`promo-step-title-${i}`}>
+      <div className="promo-step-head">
+        <span className={cx('promo-step-num', done && 'is-done')}>{done ? <Icon icon={faCheck} /> : i + 1}</span>
+        <div>
+          <div className="promo-step-kicker">{slot.free ? <><Icon icon={faGift} /> In omaggio</> : `Scelta ${i + 1}`}</div>
+          <h3 className="promo-step-title" id={`promo-step-title-${i}`}>
+            {slot.free ? 'Il tuo omaggio: ' : 'Scegli '}{slot.qty} {slot.label}
+          </h3>
+        </div>
+        <span className="promo-step-count">{picked.length}/{slot.qty}</span>
+      </div>
+
+      {(searchable || groupable) && (
+        <div className="promo-find">
+          {searchable && (
+            <label className="picker-search promo-search">
+              <Icon icon={faMagnifyingGlass} />
+              <input type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); } }}
+                placeholder={`Cerca tra ${all.length} prodotti: nome, produttore…`} aria-label={`Cerca tra i prodotti della scelta ${i + 1}`} />
+              {query && (
+                <button type="button" className="promo-search-clear" onClick={() => setQuery('')} aria-label="Cancella la ricerca">
+                  <Icon icon={faXmark} />
+                </button>
+              )}
+            </label>
+          )}
+          {groupable && (
+            <div className="search-filters promo-filters" role="group" aria-label="Filtra per tipo">
+              <button type="button" className={cx('search-filter', !group && 'active')} aria-pressed={!group} onClick={() => setGroup(null)}>
+                Tutti <span>{matches.length}</span>
+              </button>
+              {groups.map((g) => {
+                const n = matches.filter((r) => groupKey(r) === g.key).length;
+                const on = group === g.key;
+                return (
+                  <button key={g.key} type="button" className={cx('search-filter', on && 'active')} aria-pressed={on}
+                    disabled={!n && !on} onClick={() => setGroup(on ? null : g.key)}>
+                    {g.label} <span>{n}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!shown.length ? (
+        <div className="promo-none">
+          <p>{query.trim() ? `Nessun prodotto per «${query.trim()}»${group ? ' in questo gruppo' : ''}.` : 'Nessun prodotto in questo gruppo.'}</p>
+          <button type="button" className="hero-cta" onClick={reset}>Mostra tutti</button>
+        </div>
+      ) : !group && sections.length > 1 ? (
+        sections.map((g) => (
+          <div key={g.key} className="promo-group">
+            <h4 className="promo-group-title">{g.label} <span>{g.refs.length}</span></h4>
+            {tiles(g.refs)}
+          </div>
+        ))
+      ) : tiles(shown)}
+    </section>
   );
 }
 
