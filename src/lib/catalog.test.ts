@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCatalog, serializeCatalog, indexCatalog, searchCatalog, macroFileName, isBlankHtml, slugify, keyFacts, productFromParam,
-  isPromoLive, promoFromParam, promoParam, promosOf, scopeIds,
+  isPromoLive, promoFromParam, promoParam, promosOf, scopeIds, dataImages, replaceStrings,
 } from './catalog.ts';
 
 const config = {
@@ -153,4 +153,18 @@ test('scelte collegate a categorie: comprendono anche i prodotti aggiunti dopo',
 
   // collegata solo a una categoria (senza prodotti singoli): resta visibile
   assert.equal(isPromoLive({ ...catalog.promos[0], slots: [{ label: 'x', qty: 1, ids: [], macros: ['cat-vini'] }] }, '2026-01-01'), true);
+});
+
+test('foto base64 -> link: solo i valori del JSON, il resto resta identico', () => {
+  const img = 'data:image/webp;base64,AAAA';
+  const withHtml = { ...vini, products: [{ ...vini.products[0], desc: `<p><img src="${img}"></p>` }] };
+  const catalog = buildCatalog({ ...config, macroCategories: [{ ...config.macroCategories[0], bgImage: img }] }, [withHtml]);
+  const files = serializeCatalog(catalog);
+  assert.deepEqual([...files.values()].flatMap(dataImages), [img, img]); // immagine prodotto + sfondo, non quella nell'HTML
+  const swapped = serializeCatalog(replaceStrings(catalog, new Map([[img, '/api/img?i=0123456789abcdef.webp']])));
+  assert.deepEqual([...swapped.values()].flatMap(dataImages), []);
+  const saved = JSON.parse(swapped.get('vini.json')!).products[0];
+  assert.deepEqual(saved.images, ['/api/img?i=0123456789abcdef.webp']);
+  assert.equal(saved.desc, withHtml.products[0].desc);
+  assert.equal(JSON.parse(swapped.get('config.json')!).macroCategories[0].bgImage, '/api/img?i=0123456789abcdef.webp');
 });

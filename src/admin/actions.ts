@@ -3,7 +3,9 @@ import { faImage } from '@fortawesome/free-regular-svg-icons';
 import { faExpand } from '@fortawesome/free-solid-svg-icons';
 import type { Catalog, Macro, Pack, Product } from '../types';
 import type { AdminApi } from '../lib/admin';
-import { CONFIG_FILE, loadFromGitLab, macroFileName, normalizeProduct, productId, serializeCatalog } from '../lib/catalog';
+import {
+  CONFIG_FILE, dataImages, loadFromGitLab, macroFileName, normalizeProduct, productId, replaceStrings, serializeCatalog,
+} from '../lib/catalog';
 import { compressImage } from '../lib/images';
 import { moveItem } from '../lib/sortable';
 import { catalogStore, createStore } from '../lib/store';
@@ -454,12 +456,45 @@ export async function loadAdminCatalog(): Promise<Catalog> {
 // Le funzioni Vercel accettano al massimo 4,5 MB per richiesta (il JSON viaggia compresso).
 const MAX_UPLOAD = 4.4 * 1024 * 1024;
 
+async function post(what: string, headers: Record<string, string>, body?: BodyInit) {
+  const res = await fetch('/api/admin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', ...headers },
+    body,
+    credentials: 'same-origin',
+  });
+  if (res.status === 401) {
+    throw new Error("Sessione scaduta: accedi di nuovo da un'altra scheda (/admin-login.html) e riprova. Le modifiche restano qui finché non chiudi la pagina.");
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(`Errore salvando ${what}: ${data?.error ?? `HTTP ${res.status}`}`);
+  }
+  return res;
+}
+
+/**
+ * Le foto base64 dei file da salvare vanno nello storage foto (Cloudflare R2), una richiesta per foto:
+ * nel JSON resta solo il link, cosi' nessuna categoria supera il limite di 4,5 MB per salvataggio.
+ */
+async function uploadImages(contents: string[], toastId: number) {
+  const srcs = [...new Set(contents.flatMap(dataImages))];
+  const links = new Map<string, string>();
+  try {
+    for (const [i, src] of srcs.entries()) {
+      toast(`Caricamento foto ${i + 1}/${srcs.length}…`, 'loading', toastId);
+      const bytes = Uint8Array.from(atob(src.slice(src.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+      const res = await post(`la foto ${i + 1}`, { 'x-action': 'image', 'x-type': src.slice(11, src.indexOf(';')) }, bytes);
+      links.set(src, (await res.json()).url);
+    }
+  } finally {
+    // anche se una foto fallisce, quelle gia' caricate restano collegate: al prossimo salvataggio non si ripetono
+    if (links.size) catalogStore.set((c) => c && replaceStrings(c, links));
+  }
+}
+
 async function sendFile(file: string, content: string | null, message: string) {
-  const headers: Record<string, string> = {
-    'x-file': file,
-    'x-message': encodeURIComponent(message),
-    'Content-Type': 'application/octet-stream',
-  };
+  const headers: Record<string, string> = { 'x-file': file, 'x-message': encodeURIComponent(message) };
   let body: Blob | undefined;
   if (content === null) headers['x-action'] = 'delete';
   else {
@@ -472,39 +507,34 @@ async function sendFile(file: string, content: string | null, message: string) {
       throw new Error(`"${file}" è troppo grande per il salvataggio (${(body.size / 1048576).toFixed(1)} MB compressi, max 4,4 MB): riduci o elimina alcune immagini di questa categoria.`);
     }
   }
-  const res = await fetch('/api/admin', { method: 'POST', headers, body, credentials: 'same-origin' });
-  if (res.status === 401) {
-    throw new Error("Sessione scaduta: accedi di nuovo da un'altra scheda (/admin-login.html) e riprova. Le modifiche restano qui finché non chiudi la pagina.");
-  }
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(`Errore salvando ${file}: ${data?.error ?? `HTTP ${res.status}`}`);
-  }
+  await post(file, headers, body);
 }
 
+const changedFiles = (files: Map<string, string>) => [...files].filter(([file, content]) => baseline.get(file) !== content);
+
 export async function save() {
-  const catalog = catalogStore.get();
-  if (!catalog || saving) return;
+  if (!catalogStore.get() || saving) return;
   saving = true;
   menuStore.set(false);
   const startVersion = version;
-  const files = serializeCatalog(catalog);
-  // prima i file categoria, poi config.json: il config non punta mai a un file non ancora creato
-  const changed = [...files].filter(([file, content]) => baseline.get(file) !== content)
-    .sort(([a], [b]) => Number(a === CONFIG_FILE) - Number(b === CONFIG_FILE));
-  const removed = [...baseline.keys()].filter((file) => !files.has(file));
-  const total = changed.length + removed.length;
-
-  if (!total) {
-    toast('Nessuna modifica da salvare.', 'info');
-    if (version === startVersion) dirtyStore.set(false);
-    saving = false;
-    return;
-  }
-
-  let done = 0;
-  const id = toast(`Salvataggio su GitLab 0/${total}…`, 'loading');
+  const id = toast('Salvataggio su GitLab…', 'loading');
   try {
+    await uploadImages(changedFiles(serializeCatalog(getCatalog())).map(([, content]) => content), id);
+    const catalog = getCatalog();
+    const files = serializeCatalog(catalog);
+    // prima i file categoria, poi config.json: il config non punta mai a un file non ancora creato
+    const changed = changedFiles(files).sort(([a], [b]) => Number(a === CONFIG_FILE) - Number(b === CONFIG_FILE));
+    const removed = [...baseline.keys()].filter((file) => !files.has(file));
+    const total = changed.length + removed.length;
+
+    if (!total) {
+      toast('Nessuna modifica da salvare.', 'info', id);
+      if (version === startVersion) dirtyStore.set(false);
+      return;
+    }
+
+    let done = 0;
+    toast(`Salvataggio su GitLab 0/${total}…`, 'loading', id);
     for (const [file, content] of changed) {
       const name = catalog.macros.find((m) => m.file === file)?.name ?? file;
       const message = file === CONFIG_FILE ? 'Aggiornamento config catalogo'

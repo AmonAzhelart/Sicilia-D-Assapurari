@@ -175,6 +175,20 @@ export function serializeCatalog(catalog: Catalog): Map<string, string> {
   return files;
 }
 
+const DATA_IMAGE = /"(data:image\/(?:webp|png|jpe?g|gif|avif);base64,[A-Za-z0-9+/=]+)"/g;
+
+/** Foto base64 salvate come valori nel JSON (non quelle dentro l'HTML delle descrizioni). */
+export const dataImages = (json: string) => Array.from(json.matchAll(DATA_IMAGE), (m) => m[1]);
+
+/** Copia di `value` con le stringhe presenti in `map` sostituite. */
+export const replaceStrings = <T>(value: T, map: Map<string, string>): T => (
+  typeof value === 'string' ? map.get(value) ?? value
+    : Array.isArray(value) ? value.map((v) => replaceStrings(v, map))
+      : value && typeof value === 'object'
+        ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, replaceStrings(v, map)]))
+        : value
+) as T;
+
 /** Nome file univoco per una nuova macro categoria (stessa convenzione dell'originale). */
 export function macroFileName(catalog: Catalog, name: string): string {
   const base = name.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'categoria';

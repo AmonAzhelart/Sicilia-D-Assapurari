@@ -1,5 +1,6 @@
 // Helper condivisi dalle funzioni API (il prefisso "_" esclude il file dalle route Vercel).
 import crypto from 'node:crypto';
+import { AwsClient } from 'aws4fetch';
 
 export const COOKIE = '__admin_sid';
 export const SAFE_FILE = /^[\w\- .]+\.json$/;
@@ -18,6 +19,38 @@ export async function readRepoFile(file) {
   });
   if (!res.ok) throw Object.assign(new Error(`GitLab ${res.status} leggendo ${file}`), { status: res.status });
   return res.text();
+}
+
+/* ---------- Foto: storage compatibile S3 (Cloudflare R2; anche Backblaze B2 cambiando S3_ENDPOINT) ---------- */
+
+// Ogni foto e' img/<hash>.<ext>: il nome dipende dal contenuto, quindi un link non cambia mai immagine.
+export const IMAGE_ID = /^[a-f0-9]{16}\.(webp|png|jpe?g|gif|avif)$/;
+export const IMAGE_TYPES = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif' };
+
+function bucket(id, init) {
+  const { S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_REGION } = process.env;
+  if (!S3_ENDPOINT || !S3_BUCKET || !S3_ACCESS_KEY_ID || !S3_SECRET_ACCESS_KEY) {
+    throw Object.assign(new Error('Storage foto non configurato: mancano le variabili S3_* su Vercel'), { status: 500 });
+  }
+  const client = new AwsClient({
+    accessKeyId: S3_ACCESS_KEY_ID, secretAccessKey: S3_SECRET_ACCESS_KEY, service: 's3', region: S3_REGION || 'auto',
+  });
+  return client.fetch(`${S3_ENDPOINT.replace(/\/+$/, '')}/${S3_BUCKET}/img/${id}`, init);
+}
+
+/** Salva la foto nello storage (riscriverla e' innocuo: stesso nome = stesso contenuto) e restituisce il link per il JSON. */
+export async function writeImage(bytes, ext) {
+  const id = `${crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 16)}.${ext}`;
+  if (!IMAGE_ID.test(id)) throw Object.assign(new Error('Formato immagine non valido'), { status: 400 });
+  const res = await bucket(id, { method: 'PUT', body: bytes, headers: { 'Content-Type': IMAGE_TYPES[ext] } });
+  if (!res.ok) throw new Error(`Storage foto ${res.status}: ${await res.text()}`);
+  return `/api/img?i=${id}`;
+}
+
+export async function readImage(id) {
+  const res = await bucket(id);
+  if (!res.ok) throw Object.assign(new Error(`Storage foto ${res.status} leggendo ${id}`), { status: res.status });
+  return Buffer.from(await res.arrayBuffer());
 }
 
 export async function writeRepoFile(file, content, message) {

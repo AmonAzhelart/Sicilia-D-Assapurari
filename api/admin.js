@@ -1,14 +1,24 @@
 // API admin (richiede il cookie di sessione):
 //   GET  -> verifica sessione
 //   POST -> scrive/elimina un file JSON del catalogo su GitLab. Il token resta sul server.
+//   POST con x-action: image -> salva una foto (corpo = byte, x-type = webp|jpeg|...) e risponde { url }.
 import zlib from 'node:zlib';
-import { isAdmin, send, readBody, writeRepoFile, deleteRepoFile, SAFE_FILE } from './_lib.js';
+import { isAdmin, send, readBody, writeRepoFile, deleteRepoFile, writeImage, SAFE_FILE } from './_lib.js';
 
 export default async function handler(req, res) {
   if (!isAdmin(req)) return send(res, 401, { error: 'Sessione scaduta' });
   if (req.method === 'GET') return send(res, 200, { ok: true });
   if (req.method !== 'POST') return send(res, 405, { error: 'Metodo non consentito' });
   if (!process.env.GITLAB_TOKEN) return send(res, 500, { error: 'GITLAB_TOKEN non configurato sul server' });
+
+  if (req.headers['x-action'] === 'image') {
+    try {
+      return send(res, 200, { url: await writeImage(await readBody(req), String(req.headers['x-type'] || '')) });
+    } catch (err) {
+      console.error(err);
+      return send(res, err.status || 502, { error: err.message });
+    }
+  }
 
   const file = String(req.headers['x-file'] || '');
   if (!SAFE_FILE.test(file)) return send(res, 400, { error: 'Nome file non valido' });
